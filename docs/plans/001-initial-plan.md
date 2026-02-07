@@ -105,12 +105,35 @@ dp config [key] [value]         Manage configuration
 | `github.com/spf13/cobra` | CLI framework |
 | `modernc.org/sqlite` | Pure Go SQLite (no CGo) |
 | `github.com/google/uuid` | UUID generation |
-| `github.com/agnivade/levenshtein` | String similarity for suggestions |
+| `golang.org/x/term` | Terminal detection and width |
+
+**Note:** The plan originally specified `github.com/agnivade/levenshtein` for string similarity, but a hand-rolled Levenshtein implementation was used instead (`internal/analyze/suggest.go`) to keep external dependencies minimal. The similarity engine combines normalized Levenshtein distance with prefix/suffix bonuses and camelCase/underscore normalization.
+
+## Architectural Decisions Made During Implementation
+
+The following decisions were made during implementation and differ from or extend the original plan:
+
+### Table Formatting (`internal/cli/table.go`)
+A `Table` abstraction wraps `text/tabwriter` to provide consistent column-aligned output across all commands. It auto-detects TTY for bold headers and terminal width, falling back to 80 columns when piped. All output commands use this instead of raw `tabwriter`.
+
+### Configuration System (`internal/config/`)
+A dedicated `config` package manages `~/.dp/config.json`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags when the user hasn't set them on the command line. Valid config keys: `db_path`, `default_source`, `known_tools`, `default_format`.
+
+### JSON Output Mode
+The `--json` global flag is defined on the root command and available to all subcommands via the `jsonOutput` package variable. When enabled, commands emit structured JSON to stdout instead of table output. The `default_format` config key can set JSON as the default.
+
+### Build & Distribution
+- `Makefile` with `build`, `test`, `vet`, `clean`, `install` targets
+- `.goreleaser.yml` for cross-platform binary releases (linux/darwin/windows, amd64/arm64)
+- CGO disabled in release builds (`CGO_ENABLED=0`)
+
+### Public API (`pkg/desirepath/`)
+The plan included a public Go library at `pkg/desirepath/` for programmatic integration. This has not yet been implemented; all logic currently lives in `internal/`.
 
 ## MVP Phases
 
 See `docs/tasks/` for detailed task breakdowns:
-- [Phase 1: Core](../tasks/phase-1-core.md) - Types, storage, record command
-- [Phase 2: Reporting](../tasks/phase-2-reporting.md) - list, paths, stats, export commands
-- [Phase 3: Suggestions & Aliases](../tasks/phase-3-suggestions.md) - suggest, alias, init commands
-- [Phase 4: Polish](../tasks/phase-4-polish.md) - Output formatting, --json flag, config, tests
+- [Phase 1: Core](../tasks/phase-1-core.md) - Types, storage, record command (**complete**)
+- [Phase 2: Reporting](../tasks/phase-2-reporting.md) - list, paths, stats, export commands (**complete**)
+- [Phase 3: Suggestions & Aliases](../tasks/phase-3-suggestions.md) - suggest, alias, init commands (**complete**)
+- [Phase 4: Polish](../tasks/phase-4-polish.md) - Output formatting, --json flag, config, tests (**complete**)

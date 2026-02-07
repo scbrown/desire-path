@@ -29,7 +29,24 @@ var rootCmd = &cobra.Command{
 	Long: `dp collects, analyzes, and surfaces patterns from failed AI tool calls.
 Failed tool calls are signals that reveal capabilities the AI expects to exist.
 By tracking these "desires", developers can implement features or aliases so
-future similar attempts succeed.`,
+future similar attempts succeed.
+
+Data is stored in a SQLite database at ~/.dp/desires.db (configurable via
+--db flag or dp config db_path). All output commands support --json for
+machine-readable output.`,
+	Example: `  # Record a failed tool call
+  echo '{"tool_name":"read_file","error":"unknown tool"}' | dp record
+
+  # View recent desires and top patterns
+  dp list --since 7d
+  dp paths --top 10
+
+  # Find similar known tools and create an alias
+  dp suggest read_file
+  dp alias read_file Read
+
+  # Set up automatic recording from Claude Code
+  dp init --claude-code`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadFrom(configPath)
 		if err != nil {

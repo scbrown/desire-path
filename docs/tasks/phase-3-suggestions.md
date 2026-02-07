@@ -5,35 +5,35 @@ Smart features that turn collected data into actionable mappings.
 ## Tasks
 
 ### 3.1 Similarity engine (`internal/analyze/suggest.go`)
-- [ ] `Suggest(name string, known []string) []Suggestion` function
-- [ ] Levenshtein distance scoring (normalized to 0.0-1.0)
-- [ ] Common prefix/suffix bonus (e.g., `read_file` ~ `Read` via "read" prefix)
-- [ ] Case-insensitive and underscore/camelCase normalization
-- [ ] Return top N suggestions above a threshold (default 0.5)
-- [ ] `Suggestion` struct: `{Name string, Score float64}`
+- [x] `Suggest(name string, known []string) []Suggestion` function
+- [x] Levenshtein distance scoring (normalized to 0.0-1.0)
+- [x] Common prefix/suffix bonus (e.g., `read_file` ~ `Read` via "read" prefix)
+- [x] Case-insensitive and underscore/camelCase normalization
+- [x] Return top N suggestions above a threshold (default 0.5)
+- [x] `Suggestion` struct: `{Name string, Score float64}`
 
 ### 3.2 Suggest command (`internal/cli/suggest.go`)
-- [ ] `dp suggest <tool-name>` - Suggest existing tool mappings
-- [ ] Accept a `--known` flag or read known tools from config/aliases
-- [ ] Default known tools: Claude Code built-in tools (Read, Write, Edit, Bash, Glob, Grep, etc.)
-- [ ] Output: ranked suggestions with scores
-- [ ] If exact alias exists, show it
+- [x] `dp suggest <tool-name>` - Suggest existing tool mappings
+- [x] Accept a `--known` flag or read known tools from config/aliases
+- [x] Default known tools: Claude Code built-in tools (Read, Write, Edit, Bash, Glob, Grep, etc.)
+- [x] Output: ranked suggestions with scores
+- [x] If exact alias exists, show it
 
 ### 3.3 Alias command (`internal/cli/alias.go`)
-- [ ] `dp alias <from> <to>` - Create a mapping
-- [ ] `dp aliases` - List all aliases
-- [ ] `dp alias --delete <from>` - Remove an alias
-- [ ] Aliases stored in SQLite `aliases` table
-- [ ] Prevent duplicate aliases (upsert behavior)
+- [x] `dp alias <from> <to>` - Create a mapping
+- [x] `dp aliases` - List all aliases
+- [x] `dp alias --delete <from>` - Remove an alias
+- [x] Aliases stored in SQLite `aliases` table
+- [x] Prevent duplicate aliases (upsert behavior)
 
 ### 3.4 Init command (`internal/cli/init_cmd.go`)
-- [ ] `dp init` - Interactive setup wizard
-- [ ] `dp init --claude-code` - Write Claude Code hook config
-  - [ ] Detect `~/.claude/settings.json` existence
-  - [ ] Merge PostToolUseFailure hook into existing config
-  - [ ] Don't clobber existing hooks
-  - [ ] Print confirmation with instructions
-- [ ] Future: `--cursor`, `--copilot` flags for other tools
+- [x] `dp init` - Interactive setup wizard
+- [x] `dp init --claude-code` - Write Claude Code hook config
+  - [x] Detect `~/.claude/settings.json` existence
+  - [x] Merge PostToolUseFailure hook into existing config
+  - [x] Don't clobber existing hooks
+  - [x] Print confirmation with instructions
+- [x] Future: `--cursor`, `--copilot` flags for other tools
 
 ## Done when
 

@@ -16,17 +16,17 @@ internal/        Private packages - not importable by external code.
   model/         Core types: Desire, Path, Alias.
   store/         Storage interface + SQLite implementation.
   record/        Stdin JSON parsing and desire recording.
-  analyze/       Path aggregation and similarity suggestions.
-  cli/           Cobra command definitions.
-pkg/desirepath/  Public Go library for programmatic integration.
+  analyze/       Similarity engine for tool name suggestions.
+  config/        Configuration file (~/.dp/config.json) management.
+  cli/           Cobra command definitions + table formatting.
 docs/plans/      Architecture and design documents.
 docs/tasks/      Task breakdowns for implementation phases.
 ```
 
-### internal/ vs pkg/
+### internal/ packages
 
 - `internal/` is for packages only used by `dp` itself. Go enforces this boundary.
-- `pkg/desirepath/` is the public API for other Go programs to integrate with Desire Path programmatically (e.g., recording desires from their own code).
+- `pkg/desirepath/` is planned as a public Go library for programmatic integration but is not yet implemented.
 
 ## Documentation Hygiene
 
@@ -35,7 +35,7 @@ Documentation is not an afterthought - it is part of the work. When you build ne
 - **AGENTS.md**: Update this file when adding new packages, changing conventions, or adding dependencies.
 - **docs/tasks/**: Update task status when starting or completing work.
 - **Code comments**: Exported symbols get doc comments. Write them as you write the code, not later.
-- **CLI help text**: Every cobra command must have a `Short` and `Long` description. Include examples in `Example` field for non-trivial commands.
+- **CLI help text**: Every cobra command must have `Short`, `Long`, and `Example` fields. `Short` is a single-line summary. `Long` explains behavior, flags, and edge cases. `Example` shows practical usage with realistic arguments.
 - **docs/plans/**: When proposing architectural changes, write a plan document before implementing.
 
 Stale or missing documentation is a bug. If you notice something undocumented, fix it.
@@ -44,7 +44,7 @@ Stale or missing documentation is a bug. If you notice something undocumented, f
 
 ### General
 
-- Go 1.22+ (use modern idioms: range-over-int, structured logging)
+- Go 1.24+ (see `go.mod` for exact version)
 - Format with `gofmt`. No exceptions.
 - Packages are named short, lowercase, singular: `store`, `model`, `record`
 - Exported names get doc comments. Unexported names get comments only when non-obvious.
@@ -108,7 +108,9 @@ Keep dependencies minimal:
 | `github.com/spf13/cobra` | CLI framework |
 | `modernc.org/sqlite` | Pure Go SQLite (no CGo required) |
 | `github.com/google/uuid` | UUID generation |
-| `github.com/agnivade/levenshtein` | String similarity |
+| `golang.org/x/term` | Terminal detection and width measurement |
+
+The Levenshtein distance algorithm for tool name similarity is implemented in `internal/analyze/suggest.go` rather than using an external dependency.
 
 Do not add new dependencies without strong justification.
 
@@ -116,9 +118,42 @@ Do not add new dependencies without strong justification.
 
 - Each subcommand in its own file under `internal/cli/`
 - Root command defined in `root.go` with global flags (`--db`, `--json`)
-- Subcommands registered in `root.go`'s `init()` or a `Register()` func
+- Subcommands registered via `init()` in each command file
 - Use `RunE` (not `Run`) so errors propagate properly
 - Read stdin with `os.Stdin` - don't assume TTY
+
+### Table Output
+
+All commands producing tabular output use the `Table` type from `internal/cli/table.go`:
+
+```go
+tbl := NewTable(os.Stdout, "COLUMN1", "COLUMN2")
+tbl.Row("value1", "value2")
+tbl.Flush()
+```
+
+- Headers are bold when output is a TTY, plain when piped
+- Terminal width auto-detected; defaults to 80 when not a TTY
+- Long values can be truncated with `truncate(s, maxLen)`
+- Use `tbl.Color()` to check if color is enabled before adding ANSI codes
+
+### JSON Output
+
+All output commands support `--json` (global flag on root). Check `jsonOutput` and emit JSON before any table rendering:
+
+```go
+if jsonOutput {
+    enc := json.NewEncoder(os.Stdout)
+    enc.SetIndent("", "  ")
+    return enc.Encode(data)
+}
+```
+
+The `default_format` config key can set JSON as default output; the `--json` flag always overrides.
+
+### Configuration
+
+`dp config` manages settings in `~/.dp/config.json` via the `internal/config` package. Valid keys: `db_path`, `default_source`, `known_tools`, `default_format`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags.
 
 ## SQLite Conventions
 
@@ -132,8 +167,12 @@ Do not add new dependencies without strong justification.
 ## Build & Run
 
 ```bash
-go build -o dp ./cmd/dp       # Build
-go test ./...                  # Test all packages
-go vet ./...                   # Static analysis
+make build                     # Build binary (./dp)
+make test                      # Run all tests
+make vet                       # Static analysis
+make install                   # Install to $GOPATH/bin
+make clean                     # Remove build artifacts
 echo '{}' | ./dp record       # Quick smoke test
 ```
+
+Cross-platform releases are configured via `.goreleaser.yml` (linux, darwin, windows; amd64, arm64).
