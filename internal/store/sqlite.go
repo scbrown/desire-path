@@ -258,6 +258,19 @@ func (s *SQLiteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	return aliases, rows.Err()
 }
 
+// DeleteAlias removes an alias by its from_name. Returns true if an alias was deleted.
+func (s *SQLiteStore) DeleteAlias(ctx context.Context, from string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM aliases WHERE from_name = ?", from)
+	if err != nil {
+		return false, fmt.Errorf("delete alias: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("rows affected: %w", err)
+	}
+	return n > 0, nil
+}
+
 // Stats returns summary statistics about stored desires.
 func (s *SQLiteStore) Stats(ctx context.Context) (Stats, error) {
 	var st Stats

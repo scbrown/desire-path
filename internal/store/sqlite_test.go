@@ -779,5 +779,43 @@ func TestStatsTopDesiresLimit(t *testing.T) {
 	}
 }
 
+func TestDeleteAlias(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+
+	deleted, err := s.DeleteAlias(ctx, "read_file")
+	if err != nil {
+		t.Fatalf("DeleteAlias: %v", err)
+	}
+	if !deleted {
+		t.Error("expected deleted=true")
+	}
+
+	aliases, err := s.GetAliases(ctx)
+	if err != nil {
+		t.Fatalf("GetAliases: %v", err)
+	}
+	if len(aliases) != 0 {
+		t.Errorf("expected 0 aliases after delete, got %d", len(aliases))
+	}
+}
+
+func TestDeleteAliasNotFound(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	deleted, err := s.DeleteAlias(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("DeleteAlias: %v", err)
+	}
+	if deleted {
+		t.Error("expected deleted=false for nonexistent alias")
+	}
+}
+
 // Verify SQLiteStore satisfies the Store interface at compile time.
 var _ Store = (*SQLiteStore)(nil)

@@ -25,6 +25,9 @@ type Store interface {
 	// GetAliases returns all configured tool name aliases.
 	GetAliases(ctx context.Context) ([]model.Alias, error)
 
+	// DeleteAlias removes an alias by its from_name. Returns true if an alias was deleted.
+	DeleteAlias(ctx context.Context, from string) (bool, error)
+
 	// Stats returns summary statistics about stored desires.
 	Stats(ctx context.Context) (Stats, error)
 
