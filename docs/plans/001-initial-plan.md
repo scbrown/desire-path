@@ -84,18 +84,21 @@ The `PostToolUseFailure` hook provides on stdin:
 
 ## CLI Commands
 
+All commands support `--json` for machine-readable output and `--db` to override the database path.
+
 ```
-dp record [--source NAME]       Record a desire from stdin JSON
-dp list [--since 7d] [--source] List recent desires
-dp paths [--top 20]             Show aggregated paths ranked by frequency
-dp inspect <path-pattern>       Detailed view of a specific path
-dp suggest <tool-name>          Suggest existing tool mappings via similarity
-dp alias <from> <to>            Map a hallucinated name to a real tool
-dp aliases                      List all configured aliases
-dp export [--format json|csv]   Export raw data
-dp stats                        Summary statistics
-dp init [--claude-code]         Set up integration (e.g., write Claude Code hook config)
-dp config [key] [value]         Manage configuration
+dp record [--source NAME]            Record a desire from stdin JSON
+dp list [--since] [--source] [--tool] [--limit]  List recent desires
+dp paths [--top 20] [--since]        Show aggregated paths ranked by frequency
+dp inspect <pattern> [--since] [--top]  Detailed view of a specific path
+dp suggest <tool-name> [--known] [--threshold] [--top]  Suggest tool mappings via similarity
+dp alias <from> <to>                 Map a hallucinated name to a real tool
+dp alias --delete <from>             Remove an alias
+dp aliases                           List all configured aliases
+dp export [--format json|csv] [--since]  Export raw data
+dp stats                             Summary statistics
+dp init --claude-code                Set up Claude Code hook integration
+dp config [key] [value]              View/set configuration
 ```
 
 ## Dependencies

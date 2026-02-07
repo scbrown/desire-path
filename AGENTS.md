@@ -54,7 +54,7 @@ Stale or missing documentation is a bug. If you notice something undocumented, f
 
 ### General
 
-- Go 1.24+ (see `go.mod` for exact version)
+- Go 1.24+ (see `go.mod` for exact version; use modern idioms: range-over-int, structured logging)
 - Format with `gofmt`. No exceptions.
 - Packages are named short, lowercase, singular: `store`, `model`, `record`
 - Exported names get doc comments. Unexported names get comments only when non-obvious.
@@ -128,9 +128,12 @@ Do not add new dependencies without strong justification.
 
 - Each subcommand in its own file under `internal/cli/`
 - Root command defined in `root.go` with global flags (`--db`, `--json`)
-- Subcommands registered via `init()` in each command file
+- Subcommands registered via `rootCmd.AddCommand()` in each file's `init()`
 - Use `RunE` (not `Run`) so errors propagate properly
 - Read stdin with `os.Stdin` - don't assume TTY
+- Table output uses `internal/cli.Table` (wraps `text/tabwriter`) with TTY-aware color and terminal width
+- All commands that produce output support `--json` for machine-readable output
+- JSON output writes to stdout; human-readable status messages go to stderr
 
 ### Table Output
 
@@ -213,6 +216,20 @@ Raw hook payload (JSON bytes)
 - Use `?` parameter placeholders (not `$1`)
 - Always `defer rows.Close()` after query
 - Wrap multi-statement writes in transactions
+
+## Configuration
+
+`dp` uses `~/.dp/config.json` for persistent settings, managed via `dp config`.
+
+| Key | Purpose |
+|-----|---------|
+| `db_path` | Override default database location |
+| `default_source` | Default `--source` value for `dp record` |
+| `known_tools` | Comma-separated known tool names for `dp suggest` |
+| `default_format` | Default output format: `table` or `json` |
+
+Config values are loaded in `PersistentPreRun` on the root command, so they apply
+to all subcommands unless overridden by flags.
 
 ## Build & Run
 

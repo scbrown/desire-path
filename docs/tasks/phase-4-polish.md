@@ -8,7 +8,7 @@ Output quality, machine-readable output, configuration, and test coverage.
 - [x] Consistent column-aligned table output across all commands
 - [x] Auto-detect terminal width and truncate/wrap accordingly
 - [x] Use stdlib `text/tabwriter` (no external table library)
-- [x] Color output for TTY, plain for pipes (detect with `os.Stdout.Fd()` + `isatty`)
+- [x] Color output for TTY, plain for pipes (detect with `golang.org/x/term`)
 
 ### 4.2 JSON output mode
 - [x] `--json` global flag on root command
