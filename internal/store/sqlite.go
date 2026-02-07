@@ -1,0 +1,311 @@
+// Package store provides SQLite-backed persistence for desire-path data.
+package store
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/scbrown/desire-path/internal/model"
+
+	_ "modernc.org/sqlite"
+)
+
+const schemaVersion = 1
+
+// SQLiteStore implements Store using a local SQLite database.
+type SQLiteStore struct {
+	db *sql.DB
+}
+
+// New opens (or creates) a SQLite database at dbPath.
+// It auto-creates the parent directory (e.g. ~/.dp/) and runs
+// schema migrations to ensure the database is up to date.
+func New(dbPath string) (*SQLiteStore, error) {
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create data dir %s: %w", dir, err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	// Single connection for WAL mode simplicity.
+	db.SetMaxOpenConns(1)
+
+	s := &SQLiteStore{db: db}
+	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return s, nil
+}
+
+// migrate runs schema migrations up to the current version.
+func (s *SQLiteStore) migrate() error {
+	// Create version table if it doesn't exist.
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (
+		version INTEGER NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create version table: %w", err)
+	}
+
+	var ver int
+	err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&ver)
+	if err == sql.ErrNoRows {
+		ver = 0
+	} else if err != nil {
+		return fmt.Errorf("read version: %w", err)
+	}
+
+	if ver < 1 {
+		if err := s.migrateV1(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) migrateV1() error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS desires (
+			id         TEXT PRIMARY KEY,
+			tool_name  TEXT NOT NULL,
+			tool_input TEXT,
+			error      TEXT NOT NULL,
+			source     TEXT,
+			session_id TEXT,
+			cwd        TEXT,
+			timestamp  TEXT NOT NULL,
+			metadata   TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desires_tool_name ON desires(tool_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_desires_source ON desires(source)`,
+		`CREATE INDEX IF NOT EXISTS idx_desires_timestamp ON desires(timestamp)`,
+		`CREATE TABLE IF NOT EXISTS aliases (
+			from_name  TEXT PRIMARY KEY,
+			to_name    TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		)`,
+		`INSERT OR REPLACE INTO schema_version (version) VALUES (1)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v1: %w", err)
+		}
+	}
+	return nil
+}
+
+// RecordDesire persists a single failed tool call.
+func (s *SQLiteStore) RecordDesire(ctx context.Context, d model.Desire) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO desires (id, tool_name, tool_input, error, source, session_id, cwd, timestamp, metadata)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID,
+		d.ToolName,
+		nullableJSON(d.ToolInput),
+		d.Error,
+		nullableString(d.Source),
+		nullableString(d.SessionID),
+		nullableString(d.CWD),
+		d.Timestamp.UTC().Format(time.RFC3339Nano),
+		nullableJSON(d.Metadata),
+	)
+	if err != nil {
+		return fmt.Errorf("insert desire: %w", err)
+	}
+	return nil
+}
+
+// ListDesires returns desires matching the given filter options.
+func (s *SQLiteStore) ListDesires(ctx context.Context, opts ListOpts) ([]model.Desire, error) {
+	query := "SELECT id, tool_name, tool_input, error, source, session_id, cwd, timestamp, metadata FROM desires WHERE 1=1"
+	var args []any
+
+	if !opts.Since.IsZero() {
+		query += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	if opts.Source != "" {
+		query += " AND source = ?"
+		args = append(args, opts.Source)
+	}
+	if opts.ToolName != "" {
+		query += " AND tool_name = ?"
+		args = append(args, opts.ToolName)
+	}
+	query += " ORDER BY timestamp DESC"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list desires: %w", err)
+	}
+	defer rows.Close()
+
+	var desires []model.Desire
+	for rows.Next() {
+		var d model.Desire
+		var toolInput, source, sessionID, cwd, ts, metadata sql.NullString
+		if err := rows.Scan(&d.ID, &d.ToolName, &toolInput, &d.Error, &source, &sessionID, &cwd, &ts, &metadata); err != nil {
+			return nil, fmt.Errorf("scan desire: %w", err)
+		}
+		d.Source = source.String
+		d.SessionID = sessionID.String
+		d.CWD = cwd.String
+		if toolInput.Valid && toolInput.String != "" {
+			d.ToolInput = []byte(toolInput.String)
+		}
+		if metadata.Valid && metadata.String != "" {
+			d.Metadata = []byte(metadata.String)
+		}
+		t, err := time.Parse(time.RFC3339Nano, ts.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse timestamp %q: %w", ts.String, err)
+		}
+		d.Timestamp = t
+		desires = append(desires, d)
+	}
+	return desires, rows.Err()
+}
+
+// GetPaths returns aggregated desire patterns ranked by frequency.
+func (s *SQLiteStore) GetPaths(ctx context.Context, opts PathOpts) ([]model.Path, error) {
+	query := `SELECT
+		d.tool_name,
+		COUNT(*) as cnt,
+		MIN(d.timestamp) as first_seen,
+		MAX(d.timestamp) as last_seen,
+		a.to_name
+	FROM desires d
+	LEFT JOIN aliases a ON a.from_name = d.tool_name`
+
+	var args []any
+	if !opts.Since.IsZero() {
+		query += " WHERE d.timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	query += " GROUP BY d.tool_name ORDER BY cnt DESC"
+	if opts.Top > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Top)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get paths: %w", err)
+	}
+	defer rows.Close()
+
+	var paths []model.Path
+	for rows.Next() {
+		var p model.Path
+		var firstSeen, lastSeen string
+		var aliasTo sql.NullString
+		if err := rows.Scan(&p.Pattern, &p.Count, &firstSeen, &lastSeen, &aliasTo); err != nil {
+			return nil, fmt.Errorf("scan path: %w", err)
+		}
+		p.ID = p.Pattern // Use tool_name as ID for aggregated paths.
+		p.FirstSeen, _ = time.Parse(time.RFC3339Nano, firstSeen)
+		p.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen)
+		if aliasTo.Valid {
+			p.AliasTo = aliasTo.String
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}
+
+// SetAlias creates or updates a mapping from a hallucinated tool name to a real one.
+func (s *SQLiteStore) SetAlias(ctx context.Context, from, to string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO aliases (from_name, to_name, created_at) VALUES (?, ?, ?)`,
+		from, to, time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("set alias: %w", err)
+	}
+	return nil
+}
+
+// GetAliases returns all configured tool name aliases.
+func (s *SQLiteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT from_name, to_name, created_at FROM aliases ORDER BY from_name")
+	if err != nil {
+		return nil, fmt.Errorf("get aliases: %w", err)
+	}
+	defer rows.Close()
+
+	var aliases []model.Alias
+	for rows.Next() {
+		var a model.Alias
+		var createdAt string
+		if err := rows.Scan(&a.From, &a.To, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan alias: %w", err)
+		}
+		a.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		aliases = append(aliases, a)
+	}
+	return aliases, rows.Err()
+}
+
+// Stats returns summary statistics about stored desires.
+func (s *SQLiteStore) Stats(ctx context.Context) (Stats, error) {
+	var st Stats
+
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM desires").Scan(&st.TotalDesires); err != nil {
+		return st, fmt.Errorf("count desires: %w", err)
+	}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT tool_name) FROM desires").Scan(&st.UniquePaths); err != nil {
+		return st, fmt.Errorf("count unique paths: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT source, COUNT(*) FROM desires WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY COUNT(*) DESC")
+	if err != nil {
+		return st, fmt.Errorf("count sources: %w", err)
+	}
+	defer rows.Close()
+
+	st.TopSources = make(map[string]int)
+	for rows.Next() {
+		var source string
+		var count int
+		if err := rows.Scan(&source, &count); err != nil {
+			return st, fmt.Errorf("scan source: %w", err)
+		}
+		st.TopSources[source] = count
+	}
+	return st, rows.Err()
+}
+
+// Close releases the database connection.
+func (s *SQLiteStore) Close() error {
+	return s.db.Close()
+}
+
+// nullableString returns nil for empty strings, otherwise the string value.
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// nullableJSON returns nil for nil/empty JSON, otherwise the string representation.
+func nullableJSON(data []byte) any {
+	if len(data) == 0 {
+		return nil
+	}
+	return string(data)
+}
