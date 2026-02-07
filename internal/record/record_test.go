@@ -262,3 +262,195 @@ func TestRecordStoreError(t *testing.T) {
 		t.Errorf("error %q should contain 'storing desire'", err.Error())
 	}
 }
+
+func TestRecordMalformedInputs(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name:    "empty string",
+			input:   "",
+			wantErr: "parsing JSON",
+		},
+		{
+			name:    "JSON array instead of object",
+			input:   `[{"tool_name":"foo"}]`,
+			wantErr: "parsing JSON",
+		},
+		{
+			name:    "bare string",
+			input:   `"just a string"`,
+			wantErr: "parsing JSON",
+		},
+		{
+			name:    "number",
+			input:   `42`,
+			wantErr: "parsing JSON",
+		},
+		{
+			name:    "null",
+			input:   `null`,
+			wantErr: "tool_name",
+		},
+		{
+			name:    "tool_name is number not string",
+			input:   `{"tool_name":123}`,
+			wantErr: "parsing tool_name",
+		},
+		{
+			name:    "tool_name is array",
+			input:   `{"tool_name":["a","b"]}`,
+			wantErr: "parsing tool_name",
+		},
+		{
+			name:    "tool_name is null",
+			input:   `{"tool_name":null}`,
+			wantErr: "missing required field: tool_name",
+		},
+		{
+			name:    "tool_name is boolean",
+			input:   `{"tool_name":true}`,
+			wantErr: "parsing tool_name",
+		},
+		{
+			name:    "id is number",
+			input:   `{"tool_name":"foo","id":123}`,
+			wantErr: "parsing id",
+		},
+		{
+			name:    "error is number",
+			input:   `{"tool_name":"foo","error":123}`,
+			wantErr: "parsing error",
+		},
+		{
+			name:    "session_id is object",
+			input:   `{"tool_name":"foo","session_id":{"key":"val"}}`,
+			wantErr: "parsing session_id",
+		},
+		{
+			name:    "cwd is array",
+			input:   `{"tool_name":"foo","cwd":["a"]}`,
+			wantErr: "parsing cwd",
+		},
+		{
+			name:    "timestamp is not valid format",
+			input:   `{"tool_name":"foo","timestamp":"not-a-timestamp"}`,
+			wantErr: "parsing timestamp",
+		},
+		{
+			name:    "source is number",
+			input:   `{"tool_name":"foo","source":42}`,
+			wantErr: "parsing source",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := &fakeStore{}
+			err := Record(context.Background(), fs, strings.NewReader(tt.input), "")
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRecordNonObjectMetadataWithExtraFields(t *testing.T) {
+	// When metadata is not a JSON object and there are extra fields,
+	// the original metadata should be preserved under _original.
+	fs := &fakeStore{}
+	input := `{"tool_name":"foo","metadata":"just a string","extra_key":"extra_val"}`
+	err := Record(context.Background(), fs, strings.NewReader(input), "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fs.recorded) != 1 {
+		t.Fatalf("expected 1 recorded, got %d", len(fs.recorded))
+	}
+
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(fs.recorded[0].Metadata, &meta); err != nil {
+		t.Fatalf("unmarshaling metadata: %v", err)
+	}
+	// Original non-object metadata should be under _original.
+	if _, ok := meta["_original"]; !ok {
+		t.Error("metadata should contain _original key for non-object metadata")
+	}
+	// Extra field should also be present.
+	if _, ok := meta["extra_key"]; !ok {
+		t.Error("metadata should contain extra_key")
+	}
+}
+
+func TestRecordReadError(t *testing.T) {
+	fs := &fakeStore{}
+	err := Record(context.Background(), fs, &errReader{}, "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "reading input") {
+		t.Errorf("error %q should contain 'reading input'", err.Error())
+	}
+}
+
+// errReader always returns an error on Read.
+type errReader struct{}
+
+func (e *errReader) Read([]byte) (int, error) {
+	return 0, fmt.Errorf("simulated read failure")
+}
+
+func TestRecordAutoGeneratesIDAndTimestamp(t *testing.T) {
+	fs := &fakeStore{}
+	before := time.Now()
+	input := `{"tool_name":"auto_gen_test"}`
+	if err := Record(context.Background(), fs, strings.NewReader(input), ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	after := time.Now()
+
+	if len(fs.recorded) != 1 {
+		t.Fatalf("expected 1, got %d", len(fs.recorded))
+	}
+	d := fs.recorded[0]
+
+	// ID should be a non-empty UUID.
+	if d.ID == "" {
+		t.Error("ID should be auto-generated")
+	}
+	if len(d.ID) != 36 { // standard UUID format
+		t.Errorf("ID %q does not look like a UUID", d.ID)
+	}
+
+	// Timestamp should be between before and after.
+	if d.Timestamp.Before(before) || d.Timestamp.After(after) {
+		t.Errorf("Timestamp %v not between %v and %v", d.Timestamp, before, after)
+	}
+}
+
+func TestRecordEmptyObject(t *testing.T) {
+	fs := &fakeStore{}
+	err := Record(context.Background(), fs, strings.NewReader(`{}`), "")
+	if err == nil {
+		t.Fatal("expected error for empty object, got nil")
+	}
+	if !strings.Contains(err.Error(), "tool_name") {
+		t.Errorf("error %q should mention tool_name", err.Error())
+	}
+}
+
+func TestRecordWithOnlyUnknownFields(t *testing.T) {
+	fs := &fakeStore{}
+	err := Record(context.Background(), fs, strings.NewReader(`{"unknown":"value","another":123}`), "")
+	if err == nil {
+		t.Fatal("expected error (no tool_name), got nil")
+	}
+	if !strings.Contains(err.Error(), "tool_name") {
+		t.Errorf("error %q should mention tool_name", err.Error())
+	}
+}

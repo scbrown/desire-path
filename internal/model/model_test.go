@@ -182,3 +182,145 @@ func TestPathOmitsEmptyAliasTo(t *testing.T) {
 		t.Error("expected alias_to to be omitted when empty")
 	}
 }
+
+func TestDesireFromExternalJSON(t *testing.T) {
+	// Simulate receiving JSON from an external source (e.g., Claude Code hook).
+	raw := `{
+		"id": "ext-1",
+		"tool_name": "mcp__memory__search",
+		"tool_input": {"query": "test"},
+		"error": "tool not available",
+		"source": "claude-code",
+		"session_id": "sess-ext",
+		"cwd": "/home/user/project",
+		"timestamp": "2026-02-07T12:00:00Z",
+		"metadata": {"hook": "PostToolUseFailure"}
+	}`
+	var d Desire
+	if err := json.Unmarshal([]byte(raw), &d); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if d.ID != "ext-1" {
+		t.Errorf("ID = %q, want %q", d.ID, "ext-1")
+	}
+	if d.ToolName != "mcp__memory__search" {
+		t.Errorf("ToolName = %q, want %q", d.ToolName, "mcp__memory__search")
+	}
+
+	// Re-marshal and verify round-trip.
+	data, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var d2 Desire
+	if err := json.Unmarshal(data, &d2); err != nil {
+		t.Fatalf("unmarshal round-trip: %v", err)
+	}
+	if d2.ToolName != d.ToolName {
+		t.Errorf("round-trip ToolName = %q, want %q", d2.ToolName, d.ToolName)
+	}
+	if !d2.Timestamp.Equal(d.Timestamp) {
+		t.Errorf("round-trip Timestamp = %v, want %v", d2.Timestamp, d.Timestamp)
+	}
+}
+
+func TestDesireNullToolInput(t *testing.T) {
+	// ToolInput and Metadata are json.RawMessage; verify null handling.
+	raw := `{"id":"n-1","tool_name":"foo","error":"e","timestamp":"2026-01-01T00:00:00Z","tool_input":null,"metadata":null}`
+	var d Desire
+	if err := json.Unmarshal([]byte(raw), &d); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// null unmarshals to nil for json.RawMessage.
+	if d.ToolInput != nil && string(d.ToolInput) != "null" {
+		t.Errorf("ToolInput = %s, want nil or null", d.ToolInput)
+	}
+
+	data, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var d2 Desire
+	if err := json.Unmarshal(data, &d2); err != nil {
+		t.Fatalf("unmarshal round-trip: %v", err)
+	}
+	if d2.ToolName != "foo" {
+		t.Errorf("ToolName = %q, want %q", d2.ToolName, "foo")
+	}
+}
+
+func TestDesireWithComplexToolInput(t *testing.T) {
+	// Verify nested JSON in ToolInput survives round-trip.
+	input := `{"command":"ls -la","args":["--color","auto"],"nested":{"key":"value"}}`
+	d := Desire{
+		ID:        "complex-1",
+		ToolName:  "Bash",
+		ToolInput: json.RawMessage(input),
+		Error:     "failed",
+		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	data, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got Desire
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Parse both to verify structural equality.
+	var origInput, gotInput map[string]interface{}
+	if err := json.Unmarshal([]byte(input), &origInput); err != nil {
+		t.Fatalf("parse original input: %v", err)
+	}
+	if err := json.Unmarshal(got.ToolInput, &gotInput); err != nil {
+		t.Fatalf("parse got input: %v", err)
+	}
+	if origInput["command"] != gotInput["command"] {
+		t.Errorf("command = %v, want %v", gotInput["command"], origInput["command"])
+	}
+}
+
+func TestPathZeroCount(t *testing.T) {
+	p := Path{
+		ID:        "path-z",
+		Pattern:   "zero_tool",
+		Count:     0,
+		FirstSeen: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		LastSeen:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got Path
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Count != 0 {
+		t.Errorf("Count = %d, want 0", got.Count)
+	}
+}
+
+func TestAliasEmptyTo(t *testing.T) {
+	// An alias with empty To field should still round-trip.
+	a := Alias{
+		From:      "some_tool",
+		To:        "",
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	data, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got Alias
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.From != a.From {
+		t.Errorf("From = %q, want %q", got.From, a.From)
+	}
+	if got.To != "" {
+		t.Errorf("To = %q, want empty", got.To)
+	}
+}

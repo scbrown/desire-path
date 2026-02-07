@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -376,6 +377,287 @@ func TestStatsEmpty(t *testing.T) {
 	}
 	if len(st.TopSources) != 0 {
 		t.Errorf("TopSources: expected empty, got %v", st.TopSources)
+	}
+}
+
+func TestRecordDesireDuplicateID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	d := model.Desire{
+		ID:        "dup-1",
+		ToolName:  "foo",
+		Error:     "e1",
+		Timestamp: ts,
+	}
+	if err := s.RecordDesire(ctx, d); err != nil {
+		t.Fatalf("first RecordDesire: %v", err)
+	}
+
+	// Inserting same ID should fail (PRIMARY KEY constraint).
+	err := s.RecordDesire(ctx, d)
+	if err == nil {
+		t.Fatal("expected error on duplicate ID, got nil")
+	}
+}
+
+func TestListDesiresEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	desires, err := s.ListDesires(ctx, ListOpts{})
+	if err != nil {
+		t.Fatalf("ListDesires: %v", err)
+	}
+	if len(desires) != 0 {
+		t.Errorf("expected 0 desires, got %d", len(desires))
+	}
+}
+
+func TestListDesiresCombinedFilters(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "cf1", ToolName: "read_file", Error: "e1", Source: "claude-code", Timestamp: base},
+		{ID: "cf2", ToolName: "read_file", Error: "e2", Source: "cursor", Timestamp: base.Add(time.Hour)},
+		{ID: "cf3", ToolName: "write_file", Error: "e3", Source: "claude-code", Timestamp: base.Add(2 * time.Hour)},
+		{ID: "cf4", ToolName: "read_file", Error: "e4", Source: "claude-code", Timestamp: base.Add(3 * time.Hour)},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire %s: %v", d.ID, err)
+		}
+	}
+
+	// Combine: source + tool_name + since + limit.
+	got, err := s.ListDesires(ctx, ListOpts{
+		Source:   "claude-code",
+		ToolName: "read_file",
+		Since:    base.Add(30 * time.Minute),
+		Limit:    1,
+	})
+	if err != nil {
+		t.Fatalf("ListDesires: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	// Should be cf4 (newest, matches all filters).
+	if got[0].ID != "cf4" {
+		t.Errorf("ID = %q, want %q", got[0].ID, "cf4")
+	}
+}
+
+func TestListDesiresOrderDesc(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 3; i++ {
+		if err := s.RecordDesire(ctx, model.Desire{
+			ID:        fmt.Sprintf("ord-%d", i),
+			ToolName:  "t",
+			Error:     "e",
+			Timestamp: base.Add(time.Duration(i) * time.Hour),
+		}); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	got, err := s.ListDesires(ctx, ListOpts{})
+	if err != nil {
+		t.Fatalf("ListDesires: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3, got %d", len(got))
+	}
+	// Should be newest first.
+	if got[0].ID != "ord-2" {
+		t.Errorf("first = %q, want ord-2", got[0].ID)
+	}
+	if got[2].ID != "ord-0" {
+		t.Errorf("last = %q, want ord-0", got[2].ID)
+	}
+}
+
+func TestGetPathsWithSince(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "ps1", ToolName: "old_tool", Error: "e1", Timestamp: base},
+		{ID: "ps2", ToolName: "new_tool", Error: "e2", Timestamp: base.Add(2 * time.Hour)},
+		{ID: "ps3", ToolName: "new_tool", Error: "e3", Timestamp: base.Add(3 * time.Hour)},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	paths, err := s.GetPaths(ctx, PathOpts{Since: base.Add(time.Hour)})
+	if err != nil {
+		t.Fatalf("GetPaths: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path (only new_tool after since), got %d", len(paths))
+	}
+	if paths[0].Pattern != "new_tool" {
+		t.Errorf("Pattern = %q, want %q", paths[0].Pattern, "new_tool")
+	}
+	if paths[0].Count != 2 {
+		t.Errorf("Count = %d, want 2", paths[0].Count)
+	}
+}
+
+func TestGetPathsTimestamps(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	first := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	last := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "pt1", ToolName: "read_file", Error: "e1", Timestamp: first},
+		{ID: "pt2", ToolName: "read_file", Error: "e2", Timestamp: last},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	paths, err := s.GetPaths(ctx, PathOpts{})
+	if err != nil {
+		t.Fatalf("GetPaths: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d", len(paths))
+	}
+	if !paths[0].FirstSeen.Equal(first) {
+		t.Errorf("FirstSeen = %v, want %v", paths[0].FirstSeen, first)
+	}
+	if !paths[0].LastSeen.Equal(last) {
+		t.Errorf("LastSeen = %v, want %v", paths[0].LastSeen, last)
+	}
+	if paths[0].ID != paths[0].Pattern {
+		t.Errorf("ID (%q) should equal Pattern (%q)", paths[0].ID, paths[0].Pattern)
+	}
+}
+
+func TestGetPathsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	paths, err := s.GetPaths(ctx, PathOpts{})
+	if err != nil {
+		t.Fatalf("GetPaths: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("expected 0 paths, got %d", len(paths))
+	}
+}
+
+func TestGetAliasesEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	aliases, err := s.GetAliases(ctx)
+	if err != nil {
+		t.Fatalf("GetAliases: %v", err)
+	}
+	if len(aliases) != 0 {
+		t.Errorf("expected 0 aliases, got %d", len(aliases))
+	}
+}
+
+func TestSetAliasTimestamp(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	before := time.Now().UTC()
+	if err := s.SetAlias(ctx, "hallucinated", "real_tool"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+	after := time.Now().UTC()
+
+	aliases, err := s.GetAliases(ctx)
+	if err != nil {
+		t.Fatalf("GetAliases: %v", err)
+	}
+	if len(aliases) != 1 {
+		t.Fatalf("expected 1, got %d", len(aliases))
+	}
+	if aliases[0].CreatedAt.Before(before) || aliases[0].CreatedAt.After(after) {
+		t.Errorf("CreatedAt %v not between %v and %v", aliases[0].CreatedAt, before, after)
+	}
+}
+
+func TestStatsWithNoSource(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	// Desires with no source should not appear in TopSources.
+	if err := s.RecordDesire(ctx, model.Desire{
+		ID: "ns1", ToolName: "foo", Error: "e", Timestamp: ts,
+	}); err != nil {
+		t.Fatalf("RecordDesire: %v", err)
+	}
+
+	st, err := s.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if st.TotalDesires != 1 {
+		t.Errorf("TotalDesires = %d, want 1", st.TotalDesires)
+	}
+	if len(st.TopSources) != 0 {
+		t.Errorf("TopSources should be empty for desires with no source, got %v", st.TopSources)
+	}
+}
+
+func TestRecordDesireNullableFields(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	// Record with all nullable fields empty.
+	d := model.Desire{
+		ID:        "nullable-1",
+		ToolName:  "test_tool",
+		Error:     "test error",
+		Timestamp: ts,
+	}
+	if err := s.RecordDesire(ctx, d); err != nil {
+		t.Fatalf("RecordDesire: %v", err)
+	}
+
+	got, err := s.ListDesires(ctx, ListOpts{})
+	if err != nil {
+		t.Fatalf("ListDesires: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+
+	if got[0].Source != "" {
+		t.Errorf("Source = %q, want empty", got[0].Source)
+	}
+	if got[0].SessionID != "" {
+		t.Errorf("SessionID = %q, want empty", got[0].SessionID)
+	}
+	if got[0].CWD != "" {
+		t.Errorf("CWD = %q, want empty", got[0].CWD)
+	}
+	if got[0].ToolInput != nil {
+		t.Errorf("ToolInput = %s, want nil", got[0].ToolInput)
+	}
+	if got[0].Metadata != nil {
+		t.Errorf("Metadata = %s, want nil", got[0].Metadata)
 	}
 }
 
