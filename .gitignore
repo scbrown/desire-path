@@ -1,0 +1,8 @@
+# Build output
+/dp
+
+# Runtime/IDE
+.runtime/
+.claude/
+.logs/
+.beads/
