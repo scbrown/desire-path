@@ -20,6 +20,7 @@ func setupTestDB(t *testing.T) string {
 func TestStatsCmdEmpty(t *testing.T) {
 	path := setupTestDB(t)
 	dbPath = path
+	jsonOutput = false
 
 	// Capture stdout.
 	old := os.Stdout
