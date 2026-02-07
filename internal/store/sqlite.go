@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/scbrown/desire-path/internal/model"
@@ -352,6 +353,126 @@ func (s *SQLiteStore) Stats(ctx context.Context) (Stats, error) {
 	}
 
 	return st, nil
+}
+
+// InspectPath returns detailed inspection data for a specific tool name pattern.
+func (s *SQLiteStore) InspectPath(ctx context.Context, opts InspectOpts) (*InspectResult, error) {
+	topN := opts.TopN
+	if topN <= 0 {
+		topN = 5
+	}
+
+	// Determine whether to use exact match or LIKE.
+	// Only % triggers LIKE mode; underscores are common in tool names.
+	hasWildcard := strings.Contains(opts.Pattern, "%")
+	matchClause := "tool_name = ?"
+	if hasWildcard {
+		matchClause = "tool_name LIKE ?"
+	}
+
+	// Build WHERE clause with optional Since filter.
+	where := "WHERE " + matchClause
+	args := []any{opts.Pattern}
+	if !opts.Since.IsZero() {
+		where += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+
+	// Summary: total count, first/last seen.
+	var result InspectResult
+	result.Pattern = opts.Pattern
+
+	var firstSeen, lastSeen sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM desires "+where, args...,
+	).Scan(&result.Total, &firstSeen, &lastSeen)
+	if err != nil {
+		return nil, fmt.Errorf("inspect summary: %w", err)
+	}
+
+	if result.Total == 0 {
+		return &result, nil
+	}
+
+	if firstSeen.Valid {
+		result.FirstSeen, _ = time.Parse(time.RFC3339Nano, firstSeen.String)
+	}
+	if lastSeen.Valid {
+		result.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen.String)
+	}
+
+	// Check for alias (only meaningful for exact match).
+	if !hasWildcard {
+		var aliasTo sql.NullString
+		_ = s.db.QueryRowContext(ctx,
+			"SELECT to_name FROM aliases WHERE from_name = ?", opts.Pattern,
+		).Scan(&aliasTo)
+		if aliasTo.Valid {
+			result.AliasTo = aliasTo.String
+		}
+	}
+
+	// Histogram: count by date.
+	histRows, err := s.db.QueryContext(ctx,
+		"SELECT substr(timestamp, 1, 10) AS day, COUNT(*) AS cnt FROM desires "+
+			where+" GROUP BY day ORDER BY day", args...)
+	if err != nil {
+		return nil, fmt.Errorf("inspect histogram: %w", err)
+	}
+	defer histRows.Close()
+
+	for histRows.Next() {
+		var dc DateCount
+		if err := histRows.Scan(&dc.Date, &dc.Count); err != nil {
+			return nil, fmt.Errorf("scan histogram: %w", err)
+		}
+		result.Histogram = append(result.Histogram, dc)
+	}
+	if err := histRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Top tool_input values.
+	inputRows, err := s.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT tool_input, COUNT(*) AS cnt FROM desires %s AND tool_input IS NOT NULL AND tool_input != '' GROUP BY tool_input ORDER BY cnt DESC LIMIT %d", where, topN),
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("inspect top inputs: %w", err)
+	}
+	defer inputRows.Close()
+
+	for inputRows.Next() {
+		var nc NameCount
+		if err := inputRows.Scan(&nc.Name, &nc.Count); err != nil {
+			return nil, fmt.Errorf("scan top input: %w", err)
+		}
+		result.TopInputs = append(result.TopInputs, nc)
+	}
+	if err := inputRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Top error messages.
+	errRows, err := s.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT error, COUNT(*) AS cnt FROM desires %s AND error != '' GROUP BY error ORDER BY cnt DESC LIMIT %d", where, topN),
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("inspect top errors: %w", err)
+	}
+	defer errRows.Close()
+
+	for errRows.Next() {
+		var nc NameCount
+		if err := errRows.Scan(&nc.Name, &nc.Count); err != nil {
+			return nil, fmt.Errorf("scan top error: %w", err)
+		}
+		result.TopErrors = append(result.TopErrors, nc)
+	}
+	if err := errRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
 }
 
 // Close releases the database connection.

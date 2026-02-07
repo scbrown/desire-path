@@ -817,5 +817,191 @@ func TestDeleteAliasNotFound(t *testing.T) {
 	}
 }
 
+func TestInspectPathBasic(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "ip1", ToolName: "read_file", ToolInput: json.RawMessage(`{"path":"/etc/hosts"}`), Error: "unknown tool", Timestamp: base},
+		{ID: "ip2", ToolName: "read_file", ToolInput: json.RawMessage(`{"path":"/etc/passwd"}`), Error: "unknown tool", Timestamp: base.Add(time.Hour)},
+		{ID: "ip3", ToolName: "read_file", ToolInput: json.RawMessage(`{"path":"/etc/hosts"}`), Error: "tool not found", Timestamp: base.Add(25 * time.Hour)},
+		{ID: "ip4", ToolName: "write_file", ToolInput: json.RawMessage(`{"path":"/tmp/out"}`), Error: "not allowed", Timestamp: base.Add(2 * time.Hour)},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	result, err := s.InspectPath(ctx, InspectOpts{Pattern: "read_file"})
+	if err != nil {
+		t.Fatalf("InspectPath: %v", err)
+	}
+
+	if result.Total != 3 {
+		t.Errorf("Total = %d, want 3", result.Total)
+	}
+	if !result.FirstSeen.Equal(base) {
+		t.Errorf("FirstSeen = %v, want %v", result.FirstSeen, base)
+	}
+	if !result.LastSeen.Equal(base.Add(25 * time.Hour)) {
+		t.Errorf("LastSeen = %v, want %v", result.LastSeen, base.Add(25*time.Hour))
+	}
+
+	// Histogram: should have 2 days.
+	if len(result.Histogram) != 2 {
+		t.Fatalf("Histogram: expected 2 days, got %d", len(result.Histogram))
+	}
+	if result.Histogram[0].Date != "2026-01-10" {
+		t.Errorf("Histogram[0].Date = %q, want %q", result.Histogram[0].Date, "2026-01-10")
+	}
+	if result.Histogram[0].Count != 2 {
+		t.Errorf("Histogram[0].Count = %d, want 2", result.Histogram[0].Count)
+	}
+	if result.Histogram[1].Date != "2026-01-11" {
+		t.Errorf("Histogram[1].Date = %q, want %q", result.Histogram[1].Date, "2026-01-11")
+	}
+	if result.Histogram[1].Count != 1 {
+		t.Errorf("Histogram[1].Count = %d, want 1", result.Histogram[1].Count)
+	}
+
+	// Top inputs: /etc/hosts (2) > /etc/passwd (1).
+	if len(result.TopInputs) != 2 {
+		t.Fatalf("TopInputs: expected 2, got %d", len(result.TopInputs))
+	}
+	if result.TopInputs[0].Count != 2 {
+		t.Errorf("TopInputs[0].Count = %d, want 2", result.TopInputs[0].Count)
+	}
+
+	// Top errors: "unknown tool" (2) > "tool not found" (1).
+	if len(result.TopErrors) != 2 {
+		t.Fatalf("TopErrors: expected 2, got %d", len(result.TopErrors))
+	}
+	if result.TopErrors[0].Name != "unknown tool" {
+		t.Errorf("TopErrors[0].Name = %q, want %q", result.TopErrors[0].Name, "unknown tool")
+	}
+	if result.TopErrors[0].Count != 2 {
+		t.Errorf("TopErrors[0].Count = %d, want 2", result.TopErrors[0].Count)
+	}
+}
+
+func TestInspectPathEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	result, err := s.InspectPath(ctx, InspectOpts{Pattern: "nonexistent"})
+	if err != nil {
+		t.Fatalf("InspectPath: %v", err)
+	}
+	if result.Total != 0 {
+		t.Errorf("Total = %d, want 0", result.Total)
+	}
+	if len(result.Histogram) != 0 {
+		t.Errorf("Histogram: expected empty, got %d entries", len(result.Histogram))
+	}
+}
+
+func TestInspectPathWithAlias(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.RecordDesire(ctx, model.Desire{
+		ID: "ipa1", ToolName: "read_file", Error: "e", Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("RecordDesire: %v", err)
+	}
+	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+
+	result, err := s.InspectPath(ctx, InspectOpts{Pattern: "read_file"})
+	if err != nil {
+		t.Fatalf("InspectPath: %v", err)
+	}
+	if result.AliasTo != "Read" {
+		t.Errorf("AliasTo = %q, want %q", result.AliasTo, "Read")
+	}
+}
+
+func TestInspectPathWildcard(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	desires := []model.Desire{
+		{ID: "ipw1", ToolName: "read_file", Error: "e1", Timestamp: ts},
+		{ID: "ipw2", ToolName: "read_dir", Error: "e2", Timestamp: ts},
+		{ID: "ipw3", ToolName: "write_file", Error: "e3", Timestamp: ts},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	result, err := s.InspectPath(ctx, InspectOpts{Pattern: "read%"})
+	if err != nil {
+		t.Fatalf("InspectPath: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("Total = %d, want 2 (read_file + read_dir)", result.Total)
+	}
+}
+
+func TestInspectPathWithSince(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "ips1", ToolName: "read_file", Error: "e1", Timestamp: base},
+		{ID: "ips2", ToolName: "read_file", Error: "e2", Timestamp: base.Add(2 * time.Hour)},
+		{ID: "ips3", ToolName: "read_file", Error: "e3", Timestamp: base.Add(4 * time.Hour)},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	result, err := s.InspectPath(ctx, InspectOpts{
+		Pattern: "read_file",
+		Since:   base.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("InspectPath: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("Total = %d, want 2 (only after since)", result.Total)
+	}
+}
+
+func TestInspectPathTopN(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	// Create desires with 6 different error messages.
+	for i := 0; i < 6; i++ {
+		if err := s.RecordDesire(ctx, model.Desire{
+			ID:       fmt.Sprintf("ipn-%d", i),
+			ToolName: "test_tool",
+			Error:    fmt.Sprintf("error_%d", i),
+			Timestamp: ts,
+		}); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	result, err := s.InspectPath(ctx, InspectOpts{Pattern: "test_tool", TopN: 3})
+	if err != nil {
+		t.Fatalf("InspectPath: %v", err)
+	}
+	if len(result.TopErrors) != 3 {
+		t.Errorf("TopErrors: expected 3 with TopN=3, got %d", len(result.TopErrors))
+	}
+}
+
 // Verify SQLiteStore satisfies the Store interface at compile time.
 var _ Store = (*SQLiteStore)(nil)

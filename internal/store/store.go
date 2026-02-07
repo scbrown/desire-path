@@ -31,6 +31,9 @@ type Store interface {
 	// Stats returns summary statistics about stored desires.
 	Stats(ctx context.Context) (Stats, error)
 
+	// InspectPath returns detailed inspection data for a specific tool name pattern.
+	InspectPath(ctx context.Context, opts InspectOpts) (*InspectResult, error)
+
 	// Close releases any resources held by the store.
 	Close() error
 }
@@ -52,6 +55,31 @@ type PathOpts struct {
 // NameCount pairs a name (tool name or source) with its occurrence count.
 type NameCount struct {
 	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// InspectOpts controls filtering for InspectPath.
+type InspectOpts struct {
+	Pattern string    // Tool name pattern (exact match, or SQL LIKE with % wildcards).
+	Since   time.Time // Only desires after this time.
+	TopN    int       // Maximum number of top inputs/errors to return; 0 defaults to 5.
+}
+
+// InspectResult holds detailed inspection data for a tool name pattern.
+type InspectResult struct {
+	Pattern   string      `json:"pattern"`
+	Total     int         `json:"total"`
+	FirstSeen time.Time   `json:"first_seen"`
+	LastSeen  time.Time   `json:"last_seen"`
+	AliasTo   string      `json:"alias_to,omitempty"`
+	Histogram []DateCount `json:"histogram"`
+	TopInputs []NameCount `json:"top_inputs"`
+	TopErrors []NameCount `json:"top_errors"`
+}
+
+// DateCount pairs a date string with a count for histogram display.
+type DateCount struct {
+	Date  string `json:"date"`
 	Count int    `json:"count"`
 }
 
