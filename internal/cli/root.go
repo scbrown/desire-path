@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/scbrown/desire-path/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -29,6 +30,18 @@ var rootCmd = &cobra.Command{
 Failed tool calls are signals that reveal capabilities the AI expects to exist.
 By tracking these "desires", developers can implement features or aliases so
 future similar attempts succeed.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadFrom(configPath)
+		if err != nil {
+			return
+		}
+		if cfg.DBPath != "" && !cmd.Flags().Changed("db") {
+			dbPath = cfg.DBPath
+		}
+		if cfg.DefaultFormat == "json" && !cmd.Flags().Changed("json") {
+			jsonOutput = true
+		}
+	},
 }
 
 func init() {
