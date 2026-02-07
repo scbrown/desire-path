@@ -17,6 +17,7 @@ internal/        Private packages - not importable by external code.
   store/         Storage interface + SQLite implementation.
   record/        Stdin JSON parsing and desire recording.
   analyze/       Path aggregation and similarity suggestions.
+  config/        Configuration file load/save (~/.dp/config.json).
   cli/           Cobra command definitions.
 pkg/desirepath/  Public Go library for programmatic integration.
 docs/plans/      Architecture and design documents.
@@ -44,7 +45,7 @@ Stale or missing documentation is a bug. If you notice something undocumented, f
 
 ### General
 
-- Go 1.22+ (use modern idioms: range-over-int, structured logging)
+- Go 1.24+ (use modern idioms: range-over-int, structured logging)
 - Format with `gofmt`. No exceptions.
 - Packages are named short, lowercase, singular: `store`, `model`, `record`
 - Exported names get doc comments. Unexported names get comments only when non-obvious.
@@ -108,7 +109,7 @@ Keep dependencies minimal:
 | `github.com/spf13/cobra` | CLI framework |
 | `modernc.org/sqlite` | Pure Go SQLite (no CGo required) |
 | `github.com/google/uuid` | UUID generation |
-| `github.com/agnivade/levenshtein` | String similarity |
+| `golang.org/x/term` | Terminal detection and width |
 
 Do not add new dependencies without strong justification.
 
@@ -116,9 +117,12 @@ Do not add new dependencies without strong justification.
 
 - Each subcommand in its own file under `internal/cli/`
 - Root command defined in `root.go` with global flags (`--db`, `--json`)
-- Subcommands registered in `root.go`'s `init()` or a `Register()` func
+- Subcommands registered via `rootCmd.AddCommand()` in each file's `init()`
 - Use `RunE` (not `Run`) so errors propagate properly
 - Read stdin with `os.Stdin` - don't assume TTY
+- Table output uses `internal/cli.Table` (wraps `text/tabwriter`) with TTY-aware color and terminal width
+- All commands that produce output support `--json` for machine-readable output
+- JSON output writes to stdout; human-readable status messages go to stderr
 
 ## SQLite Conventions
 
@@ -129,11 +133,27 @@ Do not add new dependencies without strong justification.
 - Always `defer rows.Close()` after query
 - Wrap multi-statement writes in transactions
 
+## Configuration
+
+`dp` uses `~/.dp/config.json` for persistent settings, managed via `dp config`.
+
+| Key | Purpose |
+|-----|---------|
+| `db_path` | Override default database location |
+| `default_source` | Default `--source` value for `dp record` |
+| `known_tools` | Comma-separated known tool names for `dp suggest` |
+| `default_format` | Default output format: `table` or `json` |
+
+Config values are loaded in `PersistentPreRun` on the root command, so they apply
+to all subcommands unless overridden by flags.
+
 ## Build & Run
 
 ```bash
-go build -o dp ./cmd/dp       # Build
-go test ./...                  # Test all packages
-go vet ./...                   # Static analysis
+make build                     # Build binary (outputs ./dp)
+make test                      # Test all packages
+make vet                       # Static analysis
+make install                   # Install to $GOPATH/bin
+make clean                     # Remove build artifacts
 echo '{}' | ./dp record       # Quick smoke test
 ```

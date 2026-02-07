@@ -84,18 +84,21 @@ The `PostToolUseFailure` hook provides on stdin:
 
 ## CLI Commands
 
+All commands support `--json` for machine-readable output and `--db` to override the database path.
+
 ```
-dp record [--source NAME]       Record a desire from stdin JSON
-dp list [--since 7d] [--source] List recent desires
-dp paths [--top 20]             Show aggregated paths ranked by frequency
-dp inspect <path-pattern>       Detailed view of a specific path
-dp suggest <tool-name>          Suggest existing tool mappings via similarity
-dp alias <from> <to>            Map a hallucinated name to a real tool
-dp aliases                      List all configured aliases
-dp export [--format json|csv]   Export raw data
-dp stats                        Summary statistics
-dp init [--claude-code]         Set up integration (e.g., write Claude Code hook config)
-dp config [key] [value]         Manage configuration
+dp record [--source NAME]            Record a desire from stdin JSON
+dp list [--since] [--source] [--tool] [--limit]  List recent desires
+dp paths [--top 20] [--since]        Show aggregated paths ranked by frequency
+dp inspect <pattern> [--since] [--top]  Detailed view of a specific path
+dp suggest <tool-name> [--known] [--threshold] [--top]  Suggest tool mappings via similarity
+dp alias <from> <to>                 Map a hallucinated name to a real tool
+dp alias --delete <from>             Remove an alias
+dp aliases                           List all configured aliases
+dp export [--format json|csv] [--since]  Export raw data
+dp stats                             Summary statistics
+dp init --claude-code                Set up Claude Code hook integration
+dp config [key] [value]              View/set configuration
 ```
 
 ## Dependencies
@@ -105,7 +108,19 @@ dp config [key] [value]         Manage configuration
 | `github.com/spf13/cobra` | CLI framework |
 | `modernc.org/sqlite` | Pure Go SQLite (no CGo) |
 | `github.com/google/uuid` | UUID generation |
-| `github.com/agnivade/levenshtein` | String similarity for suggestions |
+| `golang.org/x/term` | Terminal detection and width |
+
+Note: String similarity for suggestions uses an internal Levenshtein implementation in `internal/analyze/`.
+
+## Configuration
+
+Settings stored in `~/.dp/config.json`, managed via `dp config`. The config package (`internal/config/`) handles load/save with JSON serialization. Valid keys: `db_path`, `default_source`, `known_tools`, `default_format`. Config values are applied in `PersistentPreRun` and can be overridden by flags.
+
+## Output Formatting
+
+- **Table output**: All tabular commands use `internal/cli.Table`, a wrapper around `text/tabwriter` that auto-detects TTY for color (ANSI bold headers) and terminal width.
+- **JSON output**: The `--json` global flag on the root command enables machine-readable JSON output on all commands. When `default_format` is set to `json` in config, JSON is the default.
+- **TTY detection**: Uses `golang.org/x/term` to detect terminal and query width. Non-TTY output gets plain text at 80-column default width.
 
 ## MVP Phases
 
