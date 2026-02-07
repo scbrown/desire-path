@@ -359,6 +359,28 @@ func TestStats(t *testing.T) {
 	if st.TopSources["cursor"] != 1 {
 		t.Errorf("TopSources[cursor]: got %d, want 1", st.TopSources["cursor"])
 	}
+
+	// TopDesires: read_file=2 should be first.
+	if len(st.TopDesires) != 2 {
+		t.Fatalf("TopDesires: expected 2, got %d", len(st.TopDesires))
+	}
+	if st.TopDesires[0].Name != "read_file" || st.TopDesires[0].Count != 2 {
+		t.Errorf("TopDesires[0]: got %+v, want {read_file, 2}", st.TopDesires[0])
+	}
+	if st.TopDesires[1].Name != "write_file" || st.TopDesires[1].Count != 1 {
+		t.Errorf("TopDesires[1]: got %+v, want {write_file, 1}", st.TopDesires[1])
+	}
+
+	// All desires were just recorded, so time-window counts should match.
+	if st.Last24h != 3 {
+		t.Errorf("Last24h: got %d, want 3", st.Last24h)
+	}
+	if st.Last7d != 3 {
+		t.Errorf("Last7d: got %d, want 3", st.Last7d)
+	}
+	if st.Last30d != 3 {
+		t.Errorf("Last30d: got %d, want 3", st.Last30d)
+	}
 }
 
 func TestStatsEmpty(t *testing.T) {
@@ -658,6 +680,102 @@ func TestRecordDesireNullableFields(t *testing.T) {
 	}
 	if got[0].Metadata != nil {
 		t.Errorf("Metadata = %s, want nil", got[0].Metadata)
+	}
+}
+
+func TestStatsDateRange(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	earliest := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	latest := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "dr1", ToolName: "a", Error: "e", Timestamp: earliest},
+		{ID: "dr2", ToolName: "b", Error: "e", Timestamp: latest},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	st, err := s.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if !st.Earliest.Equal(earliest) {
+		t.Errorf("Earliest: got %v, want %v", st.Earliest, earliest)
+	}
+	if !st.Latest.Equal(latest) {
+		t.Errorf("Latest: got %v, want %v", st.Latest, latest)
+	}
+}
+
+func TestStatsTimeWindows(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	desires := []model.Desire{
+		{ID: "tw1", ToolName: "a", Error: "e", Timestamp: now.Add(-2 * time.Hour)},  // Within 24h.
+		{ID: "tw2", ToolName: "b", Error: "e", Timestamp: now.Add(-3 * 24 * time.Hour)},  // Within 7d.
+		{ID: "tw3", ToolName: "c", Error: "e", Timestamp: now.Add(-15 * 24 * time.Hour)}, // Within 30d.
+		{ID: "tw4", ToolName: "d", Error: "e", Timestamp: now.Add(-60 * 24 * time.Hour)}, // Outside 30d.
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire: %v", err)
+		}
+	}
+
+	st, err := s.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if st.Last24h != 1 {
+		t.Errorf("Last24h: got %d, want 1", st.Last24h)
+	}
+	if st.Last7d != 2 {
+		t.Errorf("Last7d: got %d, want 2", st.Last7d)
+	}
+	if st.Last30d != 3 {
+		t.Errorf("Last30d: got %d, want 3", st.Last30d)
+	}
+}
+
+func TestStatsTopDesiresLimit(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	// Create 7 different tool names - only top 5 should be returned.
+	for i := 0; i < 7; i++ {
+		name := fmt.Sprintf("tool_%d", i)
+		for j := 0; j <= i; j++ {
+			if err := s.RecordDesire(ctx, model.Desire{
+				ID:        fmt.Sprintf("tl-%d-%d", i, j),
+				ToolName:  name,
+				Error:     "e",
+				Timestamp: ts,
+			}); err != nil {
+				t.Fatalf("RecordDesire: %v", err)
+			}
+		}
+	}
+
+	st, err := s.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if len(st.TopDesires) != 5 {
+		t.Errorf("TopDesires: expected 5, got %d", len(st.TopDesires))
+	}
+	// Most frequent should be tool_6 (7 occurrences).
+	if st.TopDesires[0].Name != "tool_6" {
+		t.Errorf("TopDesires[0].Name = %q, want tool_6", st.TopDesires[0].Name)
+	}
+	if st.TopDesires[0].Count != 7 {
+		t.Errorf("TopDesires[0].Count = %d, want 7", st.TopDesires[0].Count)
 	}
 }
 

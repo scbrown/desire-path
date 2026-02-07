@@ -46,9 +46,21 @@ type PathOpts struct {
 	Since time.Time // Only aggregate desires after this time.
 }
 
+// NameCount pairs a name (tool name or source) with its occurrence count.
+type NameCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
 // Stats holds summary statistics about stored desires.
 type Stats struct {
 	TotalDesires int            `json:"total_desires"`
 	UniquePaths  int            `json:"unique_paths"`
 	TopSources   map[string]int `json:"top_sources"`
+	TopDesires   []NameCount    `json:"top_desires"`
+	Earliest     time.Time      `json:"earliest"`
+	Latest       time.Time      `json:"latest"`
+	Last24h      int            `json:"last_24h"`
+	Last7d       int            `json:"last_7d"`
+	Last30d      int            `json:"last_30d"`
 }

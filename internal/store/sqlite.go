@@ -270,23 +270,75 @@ func (s *SQLiteStore) Stats(ctx context.Context) (Stats, error) {
 		return st, fmt.Errorf("count unique paths: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT source, COUNT(*) FROM desires WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY COUNT(*) DESC")
+	// Top sources (top 5).
+	srcRows, err := s.db.QueryContext(ctx,
+		"SELECT source, COUNT(*) FROM desires WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY COUNT(*) DESC LIMIT 5")
 	if err != nil {
 		return st, fmt.Errorf("count sources: %w", err)
 	}
-	defer rows.Close()
+	defer srcRows.Close()
 
 	st.TopSources = make(map[string]int)
-	for rows.Next() {
+	for srcRows.Next() {
 		var source string
 		var count int
-		if err := rows.Scan(&source, &count); err != nil {
+		if err := srcRows.Scan(&source, &count); err != nil {
 			return st, fmt.Errorf("scan source: %w", err)
 		}
 		st.TopSources[source] = count
 	}
-	return st, rows.Err()
+	if err := srcRows.Err(); err != nil {
+		return st, err
+	}
+
+	// Top 5 most common desires (tool names).
+	toolRows, err := s.db.QueryContext(ctx,
+		"SELECT tool_name, COUNT(*) as cnt FROM desires GROUP BY tool_name ORDER BY cnt DESC LIMIT 5")
+	if err != nil {
+		return st, fmt.Errorf("top desires: %w", err)
+	}
+	defer toolRows.Close()
+
+	for toolRows.Next() {
+		var nc NameCount
+		if err := toolRows.Scan(&nc.Name, &nc.Count); err != nil {
+			return st, fmt.Errorf("scan top desire: %w", err)
+		}
+		st.TopDesires = append(st.TopDesires, nc)
+	}
+	if err := toolRows.Err(); err != nil {
+		return st, err
+	}
+
+	// Date range.
+	if st.TotalDesires > 0 {
+		var earliest, latest string
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT MIN(timestamp), MAX(timestamp) FROM desires").Scan(&earliest, &latest); err != nil {
+			return st, fmt.Errorf("date range: %w", err)
+		}
+		st.Earliest, _ = time.Parse(time.RFC3339Nano, earliest)
+		st.Latest, _ = time.Parse(time.RFC3339Nano, latest)
+	}
+
+	// Time-window counts.
+	now := time.Now().UTC()
+	for _, w := range []struct {
+		dur time.Duration
+		dst *int
+	}{
+		{24 * time.Hour, &st.Last24h},
+		{7 * 24 * time.Hour, &st.Last7d},
+		{30 * 24 * time.Hour, &st.Last30d},
+	} {
+		since := now.Add(-w.dur).Format(time.RFC3339Nano)
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM desires WHERE timestamp >= ?", since).Scan(w.dst); err != nil {
+			return st, fmt.Errorf("count since %v: %w", w.dur, err)
+		}
+	}
+
+	return st, nil
 }
 
 // Close releases the database connection.
