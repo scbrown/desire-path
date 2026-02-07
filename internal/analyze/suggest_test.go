@@ -306,3 +306,72 @@ func TestSuggestScoreSymmetry(t *testing.T) {
 		t.Errorf("similarity not symmetric: (%q,%q)=%f vs (%q,%q)=%f", a, b, s1, b, a, s2)
 	}
 }
+
+func TestSortByScoreEmpty(t *testing.T) {
+	// Should not panic on empty slice.
+	sortByScore(nil)
+	sortByScore([]Suggestion{})
+}
+
+func TestSortByScoreSingle(t *testing.T) {
+	s := []Suggestion{{Name: "a", Score: 0.5}}
+	sortByScore(s)
+	if s[0].Name != "a" {
+		t.Errorf("single element sort changed: got %q", s[0].Name)
+	}
+}
+
+func TestSortByScoreAlreadySorted(t *testing.T) {
+	s := []Suggestion{
+		{Name: "a", Score: 0.9},
+		{Name: "b", Score: 0.7},
+		{Name: "c", Score: 0.5},
+	}
+	sortByScore(s)
+	if s[0].Name != "a" || s[1].Name != "b" || s[2].Name != "c" {
+		t.Errorf("already sorted order changed: %v", s)
+	}
+}
+
+func TestSortByScoreReversed(t *testing.T) {
+	s := []Suggestion{
+		{Name: "c", Score: 0.3},
+		{Name: "b", Score: 0.6},
+		{Name: "a", Score: 0.9},
+	}
+	sortByScore(s)
+	if s[0].Name != "a" || s[1].Name != "b" || s[2].Name != "c" {
+		t.Errorf("reverse sort wrong: %v", s)
+	}
+}
+
+func TestSimilarityScoreCap(t *testing.T) {
+	// Identical very short strings should cap at 1.0 not exceed.
+	score := similarity("a", "a")
+	if score != 1.0 {
+		t.Errorf("identical single char: score = %f, want 1.0", score)
+	}
+}
+
+func TestSuggestNTopNZero(t *testing.T) {
+	known := []string{"aa", "ab", "ac"}
+	results := SuggestN("aa", known, 0, 0.0)
+	// TopN 0 means no limit.
+	if len(results) != 3 {
+		t.Errorf("TopN=0: expected 3 results, got %d", len(results))
+	}
+}
+
+func TestNormalizeAllUnderscores(t *testing.T) {
+	got := normalize("__foo__bar__")
+	if got != "foo bar" {
+		t.Errorf("normalize(%q) = %q, want %q", "__foo__bar__", got, "foo bar")
+	}
+}
+
+func TestNormalizeAllHyphens(t *testing.T) {
+	got := normalize("--foo--bar--")
+	if got != "foo bar" {
+		t.Errorf("normalize(%q) = %q, want %q", "--foo--bar--", got, "foo bar")
+	}
+}

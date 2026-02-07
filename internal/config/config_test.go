@@ -129,3 +129,72 @@ func TestValidKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestPath(t *testing.T) {
+	p := Path()
+	if p == "" {
+		t.Fatal("Path() returned empty string")
+	}
+	// Should end with config.json.
+	if filepath.Base(p) != "config.json" {
+		t.Errorf("Path() = %q, want basename config.json", p)
+	}
+	// Should contain .dp directory.
+	if !filepath.IsAbs(p) {
+		// If UserHomeDir fails, we get a relative path with .dp.
+		if filepath.Dir(filepath.Dir(p)) != "." {
+			t.Errorf("fallback Path() = %q, unexpected structure", p)
+		}
+	}
+}
+
+func TestSaveToCreatesDir(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "a", "b", "c", "config.json")
+	cfg := &Config{DBPath: "/test.db"}
+	if err := cfg.SaveTo(nested); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+	loaded, err := LoadFrom(nested)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if loaded.DBPath != "/test.db" {
+		t.Errorf("DBPath = %q, want /test.db", loaded.DBPath)
+	}
+}
+
+func TestSetFormatEmptyResetsToDefault(t *testing.T) {
+	cfg := &Config{DefaultFormat: "json"}
+	if err := cfg.Set("default_format", ""); err != nil {
+		t.Fatalf("Set empty format: %v", err)
+	}
+	got, _ := cfg.Get("default_format")
+	if got != "" {
+		t.Errorf("default_format = %q, want empty", got)
+	}
+}
+
+func TestSaveAndLoadEmptyConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := &Config{}
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if loaded.DBPath != "" || loaded.DefaultSource != "" || loaded.DefaultFormat != "" || len(loaded.KnownTools) != 0 {
+		t.Errorf("expected all-empty config, got %+v", loaded)
+	}
+}
+
+func TestLoadFromReadError(t *testing.T) {
+	// Try to read a directory as a file.
+	dir := t.TempDir()
+	_, err := LoadFrom(dir)
+	if err == nil {
+		t.Fatal("expected error when reading directory as file")
+	}
+}

@@ -268,3 +268,35 @@ func TestConfigCmdTooManyArgs(t *testing.T) {
 		t.Fatal("expected error for too many args")
 	}
 }
+
+func TestConfigCmdSetInvalidFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.json")
+	configPath = cfgPath
+	jsonOutput = false
+	defer func() {
+		configPath = config.Path()
+		jsonOutput = false
+	}()
+
+	rootCmd.SetArgs([]string{"config", "default_format", "xml"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for invalid format value")
+	}
+}
+
+func TestConfigCmdSetInvalidKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.json")
+	configPath = cfgPath
+	jsonOutput = false
+	defer func() {
+		configPath = config.Path()
+		jsonOutput = false
+	}()
+
+	rootCmd.SetArgs([]string{"config", "bad_key", "value"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for unknown key in set")
+	}
+}
