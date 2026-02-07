@@ -1,4 +1,4 @@
-.PHONY: build test vet clean
+.PHONY: build test vet clean install
 
 build:
 	go build -o dp ./cmd/dp
@@ -11,3 +11,6 @@ vet:
 
 clean:
 	rm -f dp
+
+install:
+	go install ./cmd/dp

@@ -1,5 +1,6 @@
 # Build output
 /dp
+/dist/
 
 # Runtime/IDE
 .runtime/
