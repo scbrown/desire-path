@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/scbrown/desire-path/internal/store"
@@ -68,17 +67,20 @@ Results are ordered by timestamp, newest first.`,
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(w, "TIMESTAMP\tSOURCE\tTOOL\tERROR")
+		tbl := NewTable(os.Stdout, "TIMESTAMP", "SOURCE", "TOOL", "ERROR")
+		maxErr := tbl.Width() - 30
+		if maxErr < 20 {
+			maxErr = 20
+		}
 		for _, d := range desires {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+			tbl.Row(
 				d.Timestamp.Format(time.DateTime),
 				d.Source,
 				d.ToolName,
-				truncate(d.Error, 50),
+				truncate(d.Error, maxErr),
 			)
 		}
-		return w.Flush()
+		return tbl.Flush()
 	},
 }
 
@@ -107,10 +109,3 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// truncate shortens a string to max characters, appending "..." if truncated.
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max-3] + "..."
-}

@@ -50,6 +50,8 @@ func printStatsJSON(st store.Stats) error {
 }
 
 func printStatsText(st store.Stats) {
+	color := isTTY(os.Stdout)
+
 	fmt.Printf("Total desires:      %d\n", st.TotalDesires)
 	fmt.Printf("Unique tool names:  %d\n", st.UniquePaths)
 
@@ -72,7 +74,7 @@ func printStatsText(st store.Stats) {
 	// Top sources.
 	if len(st.TopSources) > 0 {
 		fmt.Println()
-		fmt.Println("Top sources:")
+		fmt.Println(bold("Top sources:", color))
 
 		// Sort sources by count descending for consistent output.
 		type kv struct {
@@ -97,7 +99,7 @@ func printStatsText(st store.Stats) {
 	// Top desires.
 	if len(st.TopDesires) > 0 {
 		fmt.Println()
-		fmt.Println("Top desires:")
+		fmt.Println(bold("Top desires:", color))
 		for _, d := range st.TopDesires {
 			fmt.Printf("  %-20s %d\n", d.Name, d.Count)
 		}

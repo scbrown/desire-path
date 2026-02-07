@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/scbrown/desire-path/internal/analyze"
 	"github.com/scbrown/desire-path/internal/store"
@@ -120,10 +119,9 @@ func writeSuggestTable(w io.Writer, query string, suggestions []analyze.Suggesti
 		fmt.Fprintf(w, "No suggestions found for %q\n", query)
 		return
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "RANK\tTOOL\tSCORE")
+	tbl := NewTable(w, "RANK", "TOOL", "SCORE")
 	for i, s := range suggestions {
-		fmt.Fprintf(tw, "%d\t%s\t%.2f\n", i+1, s.Name, s.Score)
+		tbl.Row(fmt.Sprintf("%d", i+1), s.Name, fmt.Sprintf("%.2f", s.Score))
 	}
-	tw.Flush()
+	tbl.Flush()
 }

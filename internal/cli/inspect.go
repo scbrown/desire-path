@@ -81,6 +81,12 @@ func init() {
 }
 
 func writeInspectText(w io.Writer, r *store.InspectResult) {
+	color := isTTY(w)
+	width := defaultTermWidth
+	if color {
+		width = getTermWidth()
+	}
+
 	fmt.Fprintf(w, "Pattern:    %s\n", r.Pattern)
 	fmt.Fprintf(w, "Total:      %d\n", r.Total)
 
@@ -98,7 +104,7 @@ func writeInspectText(w io.Writer, r *store.InspectResult) {
 	// Frequency histogram.
 	if len(r.Histogram) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Frequency:")
+		fmt.Fprintln(w, bold("Frequency:", color))
 
 		maxCount := 0
 		for _, h := range r.Histogram {
@@ -107,7 +113,13 @@ func writeInspectText(w io.Writer, r *store.InspectResult) {
 			}
 		}
 
-		const maxBarWidth = 40
+		maxBarWidth := width - 20
+		if maxBarWidth < 10 {
+			maxBarWidth = 10
+		}
+		if maxBarWidth > 40 {
+			maxBarWidth = 40
+		}
 		for _, h := range r.Histogram {
 			barLen := h.Count * maxBarWidth / maxCount
 			if barLen == 0 && h.Count > 0 {
@@ -120,19 +132,27 @@ func writeInspectText(w io.Writer, r *store.InspectResult) {
 
 	// Top tool inputs.
 	if len(r.TopInputs) > 0 {
+		maxName := width - 10
+		if maxName < 30 {
+			maxName = 30
+		}
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Top inputs:")
+		fmt.Fprintln(w, bold("Top inputs:", color))
 		for _, inp := range r.TopInputs {
-			fmt.Fprintf(w, "  %4d  %s\n", inp.Count, truncate(inp.Name, 80))
+			fmt.Fprintf(w, "  %4d  %s\n", inp.Count, truncate(inp.Name, maxName))
 		}
 	}
 
 	// Top errors.
 	if len(r.TopErrors) > 0 {
+		maxName := width - 10
+		if maxName < 30 {
+			maxName = 30
+		}
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Top errors:")
+		fmt.Fprintln(w, bold("Top errors:", color))
 		for _, e := range r.TopErrors {
-			fmt.Fprintf(w, "  %4d  %s\n", e.Count, truncate(e.Name, 80))
+			fmt.Fprintf(w, "  %4d  %s\n", e.Count, truncate(e.Name, maxName))
 		}
 	}
 }
