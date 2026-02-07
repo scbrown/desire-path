@@ -50,13 +50,18 @@ other processing tools.`,
 			return fmt.Errorf("list desires: %w", err)
 		}
 
-		switch exportFormat {
+		format := exportFormat
+		if jsonOutput {
+			format = "json"
+		}
+
+		switch format {
 		case "json":
 			return writeJSON(desires)
 		case "csv":
 			return writeCSV(desires)
 		default:
-			return fmt.Errorf("unsupported format %q (use json or csv)", exportFormat)
+			return fmt.Errorf("unsupported format %q (use json or csv)", format)
 		}
 	},
 }

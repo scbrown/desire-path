@@ -102,6 +102,16 @@ func setupClaudeCodeAt(settingsPath string) error {
 		return err
 	}
 
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(map[string]string{
+			"status":        "configured",
+			"settings_path": settingsPath,
+			"event":         "PostToolUseFailure",
+			"command":       dpHookCommand,
+		})
+	}
 	fmt.Fprintf(os.Stdout, "Claude Code integration configured!\n\n")
 	fmt.Fprintf(os.Stdout, "Added hook to %s\n", settingsPath)
 	fmt.Fprintf(os.Stdout, "  Event:   PostToolUseFailure\n")
@@ -151,8 +161,8 @@ func mergeHook(settings claudeSettings, dpHook claudeHookEntry) (map[string]json
 
 	// Check if dp hook is already present.
 	if hasDPHook(entries) {
-		fmt.Fprintf(os.Stdout, "Claude Code integration already configured.\n")
-		fmt.Fprintf(os.Stdout, "  PostToolUseFailure hook for dp is already present in settings.\n")
+		fmt.Fprintf(os.Stderr, "Claude Code integration already configured.\n")
+		fmt.Fprintf(os.Stderr, "  PostToolUseFailure hook for dp is already present in settings.\n")
 		return hooks, nil
 	}
 
