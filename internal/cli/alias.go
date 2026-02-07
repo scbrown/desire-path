@@ -7,6 +7,7 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -54,6 +55,13 @@ func init() {
 	rootCmd.AddCommand(aliasesCmd)
 }
 
+// aliasResult is the JSON structure for alias mutation results.
+type aliasResult struct {
+	Action string `json:"action"`
+	From   string `json:"from"`
+	To     string `json:"to,omitempty"`
+}
+
 func setAlias(from, to string) error {
 	s, err := store.New(dbPath)
 	if err != nil {
@@ -63,6 +71,12 @@ func setAlias(from, to string) error {
 
 	if err := s.SetAlias(context.Background(), from, to); err != nil {
 		return fmt.Errorf("set alias: %w", err)
+	}
+
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(aliasResult{Action: "set", From: from, To: to})
 	}
 	fmt.Printf("Alias set: %s -> %s\n", from, to)
 	return nil
@@ -81,6 +95,12 @@ func deleteAlias(from string) error {
 	}
 	if !deleted {
 		return fmt.Errorf("alias %q not found", from)
+	}
+
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(aliasResult{Action: "deleted", From: from})
 	}
 	fmt.Printf("Alias deleted: %s\n", from)
 	return nil
@@ -101,11 +121,14 @@ func listAliases() error {
 	if jsonOutput {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+		if aliases == nil {
+			aliases = []model.Alias{}
+		}
 		return enc.Encode(aliases)
 	}
 
 	if len(aliases) == 0 {
-		fmt.Println("No aliases configured.")
+		fmt.Fprintln(os.Stderr, "No aliases configured.")
 		return nil
 	}
 

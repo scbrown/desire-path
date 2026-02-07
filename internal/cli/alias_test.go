@@ -263,19 +263,19 @@ func TestAliasesCmdEmpty(t *testing.T) {
 	dbPath = db
 	jsonOutput = false
 
-	old := os.Stdout
+	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
-	os.Stdout = w
+	os.Stderr = w
 
 	rootCmd.SetArgs([]string{"aliases", "--db", db})
 	if err := rootCmd.Execute(); err != nil {
 		w.Close()
-		os.Stdout = old
+		os.Stderr = oldStderr
 		t.Fatalf("execute: %v", err)
 	}
 
 	w.Close()
-	os.Stdout = old
+	os.Stderr = oldStderr
 
 	var buf bytes.Buffer
 	buf.ReadFrom(r)

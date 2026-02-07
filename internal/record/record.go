@@ -36,27 +36,27 @@ var knownFields = map[string]bool{
 //
 // Only tool_name is required. If missing, Record returns an error. UUID and
 // timestamp are generated automatically if not provided in the input.
-func Record(ctx context.Context, s store.Store, input io.Reader, source string) error {
+func Record(ctx context.Context, s store.Store, input io.Reader, source string) (model.Desire, error) {
 	raw, err := io.ReadAll(input)
 	if err != nil {
-		return fmt.Errorf("reading input: %w", err)
+		return model.Desire{}, fmt.Errorf("reading input: %w", err)
 	}
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
-		return fmt.Errorf("parsing JSON: %w", err)
+		return model.Desire{}, fmt.Errorf("parsing JSON: %w", err)
 	}
 
 	d, err := extractDesire(fields, source)
 	if err != nil {
-		return err
+		return model.Desire{}, err
 	}
 
 	if err := s.RecordDesire(ctx, d); err != nil {
-		return fmt.Errorf("storing desire: %w", err)
+		return model.Desire{}, fmt.Errorf("storing desire: %w", err)
 	}
 
-	return nil
+	return d, nil
 }
 
 // extractDesire builds a Desire from a parsed JSON map, extracting known fields

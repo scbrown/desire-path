@@ -69,6 +69,9 @@ func init() {
 func writePathsJSON(w io.Writer, paths []model.Path) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	if paths == nil {
+		paths = []model.Path{}
+	}
 	return enc.Encode(paths)
 }
 

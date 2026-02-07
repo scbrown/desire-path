@@ -231,7 +231,7 @@ func TestRecord(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fs := &fakeStore{}
-			err := Record(context.Background(), fs, strings.NewReader(tt.input), tt.source)
+			_, err := Record(context.Background(), fs, strings.NewReader(tt.input), tt.source)
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -258,7 +258,7 @@ func TestRecord(t *testing.T) {
 
 func TestRecordStoreError(t *testing.T) {
 	fs := &fakeStore{err: fmt.Errorf("db connection failed")}
-	err := Record(context.Background(), fs, strings.NewReader(`{"tool_name":"test"}`), "")
+	_, err := Record(context.Background(), fs, strings.NewReader(`{"tool_name":"test"}`), "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -353,7 +353,7 @@ func TestRecordMalformedInputs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fs := &fakeStore{}
-			err := Record(context.Background(), fs, strings.NewReader(tt.input), "")
+			_, err := Record(context.Background(), fs, strings.NewReader(tt.input), "")
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
 			}
@@ -369,7 +369,7 @@ func TestRecordNonObjectMetadataWithExtraFields(t *testing.T) {
 	// the original metadata should be preserved under _original.
 	fs := &fakeStore{}
 	input := `{"tool_name":"foo","metadata":"just a string","extra_key":"extra_val"}`
-	err := Record(context.Background(), fs, strings.NewReader(input), "")
+	_, err := Record(context.Background(), fs, strings.NewReader(input), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestRecordNonObjectMetadataWithExtraFields(t *testing.T) {
 
 func TestRecordReadError(t *testing.T) {
 	fs := &fakeStore{}
-	err := Record(context.Background(), fs, &errReader{}, "")
+	_, err := Record(context.Background(), fs, &errReader{}, "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -413,7 +413,7 @@ func TestRecordAutoGeneratesIDAndTimestamp(t *testing.T) {
 	fs := &fakeStore{}
 	before := time.Now()
 	input := `{"tool_name":"auto_gen_test"}`
-	if err := Record(context.Background(), fs, strings.NewReader(input), ""); err != nil {
+	if _, err := Record(context.Background(), fs, strings.NewReader(input), ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	after := time.Now()
@@ -439,7 +439,7 @@ func TestRecordAutoGeneratesIDAndTimestamp(t *testing.T) {
 
 func TestRecordEmptyObject(t *testing.T) {
 	fs := &fakeStore{}
-	err := Record(context.Background(), fs, strings.NewReader(`{}`), "")
+	_, err := Record(context.Background(), fs, strings.NewReader(`{}`), "")
 	if err == nil {
 		t.Fatal("expected error for empty object, got nil")
 	}
@@ -450,7 +450,7 @@ func TestRecordEmptyObject(t *testing.T) {
 
 func TestRecordWithOnlyUnknownFields(t *testing.T) {
 	fs := &fakeStore{}
-	err := Record(context.Background(), fs, strings.NewReader(`{"unknown":"value","another":123}`), "")
+	_, err := Record(context.Background(), fs, strings.NewReader(`{"unknown":"value","another":123}`), "")
 	if err == nil {
 		t.Fatal("expected error (no tool_name), got nil")
 	}

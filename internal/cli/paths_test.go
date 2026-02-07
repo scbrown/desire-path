@@ -116,8 +116,8 @@ func TestWritePathsJSONEmpty(t *testing.T) {
 		t.Fatalf("writePathsJSON: %v", err)
 	}
 	out := strings.TrimSpace(buf.String())
-	if out != "null" {
-		t.Errorf("expected null for nil paths, got %q", out)
+	if out != "[]" {
+		t.Errorf("expected [] for nil paths, got %q", out)
 	}
 }
 

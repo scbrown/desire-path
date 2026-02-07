@@ -185,18 +185,18 @@ func TestSetupClaudeCodeAlreadyConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Capture stdout.
-	old := os.Stdout
+	// Capture stderr (already configured message goes to stderr).
+	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
-	os.Stdout = w
+	os.Stderr = w
 
 	if err := setupClaudeCodeAt(settingsPath); err != nil {
 		w.Close()
-		os.Stdout = old
+		os.Stderr = oldStderr
 		t.Fatalf("setupClaudeCodeAt: %v", err)
 	}
 	w.Close()
-	os.Stdout = old
+	os.Stderr = oldStderr
 	var buf [4096]byte
 	n, _ := r.Read(buf[:])
 	output := string(buf[:n])

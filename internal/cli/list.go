@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -60,11 +61,14 @@ Results are ordered by timestamp, newest first.`,
 		if jsonOutput {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
+			if desires == nil {
+				desires = []model.Desire{}
+			}
 			return enc.Encode(desires)
 		}
 
 		if len(desires) == 0 {
-			fmt.Println("No desires found.")
+			fmt.Fprintln(os.Stderr, "No desires found.")
 			return nil
 		}
 

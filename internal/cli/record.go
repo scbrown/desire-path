@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -29,9 +30,17 @@ Unknown fields are collected into metadata.`,
 		}
 		defer s.Close()
 
-		if err := record.Record(context.Background(), s, os.Stdin, recordSource); err != nil {
+		d, err := record.Record(context.Background(), s, os.Stdin, recordSource)
+		if err != nil {
 			return err
 		}
+
+		if jsonOutput {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(d)
+		}
+		fmt.Fprintf(os.Stderr, "Recorded desire: %s (tool: %s)\n", d.ID, d.ToolName)
 		return nil
 	},
 }
