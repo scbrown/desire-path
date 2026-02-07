@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"text/tabwriter"
 	"time"
 
 	"github.com/scbrown/desire-path/internal/model"
@@ -77,17 +76,16 @@ func writePathsJSON(w io.Writer, paths []model.Path) error {
 
 // writePathsTable writes paths as an aligned text table to w.
 func writePathsTable(w io.Writer, paths []model.Path) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "RANK\tPATTERN\tCOUNT\tFIRST_SEEN\tLAST_SEEN\tALIAS")
+	tbl := NewTable(w, "RANK", "PATTERN", "COUNT", "FIRST_SEEN", "LAST_SEEN", "ALIAS")
 	for i, p := range paths {
-		fmt.Fprintf(tw, "%d\t%s\t%d\t%s\t%s\t%s\n",
-			i+1,
+		tbl.Row(
+			fmt.Sprintf("%d", i+1),
 			p.Pattern,
-			p.Count,
+			fmt.Sprintf("%d", p.Count),
 			p.FirstSeen.UTC().Format(time.RFC3339),
 			p.LastSeen.UTC().Format(time.RFC3339),
 			p.AliasTo,
 		)
 	}
-	tw.Flush()
+	tbl.Flush()
 }
