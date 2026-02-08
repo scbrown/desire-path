@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 // SQLiteStore implements Store using a local SQLite database.
 type SQLiteStore struct {
@@ -70,6 +70,12 @@ func (s *SQLiteStore) migrate() error {
 		}
 	}
 
+	if ver < 2 {
+		if err := s.migrateV2(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -99,6 +105,35 @@ func (s *SQLiteStore) migrateV1() error {
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate v1: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) migrateV2() error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS invocations (
+			id          TEXT PRIMARY KEY,
+			source      TEXT NOT NULL,
+			instance_id TEXT,
+			host_id     TEXT,
+			tool_name   TEXT NOT NULL,
+			is_error    INTEGER NOT NULL DEFAULT 0,
+			error       TEXT,
+			cwd         TEXT,
+			timestamp   TEXT NOT NULL,
+			metadata    TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_source ON invocations(source)`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_instance_id ON invocations(instance_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_tool_name ON invocations(tool_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_timestamp ON invocations(timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_is_error ON invocations(is_error)`,
+		`UPDATE schema_version SET version = 2`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v2: %w", err)
 		}
 	}
 	return nil
@@ -476,26 +511,180 @@ func (s *SQLiteStore) InspectPath(ctx context.Context, opts InspectOpts) (*Inspe
 }
 
 // RecordInvocation persists a single tool invocation.
-// TODO(dp-pj3): implement with migration v2 invocations table.
 func (s *SQLiteStore) RecordInvocation(ctx context.Context, inv model.Invocation) error {
-	return fmt.Errorf("invocations table not yet migrated")
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO invocations (id, source, instance_id, host_id, tool_name, is_error, error, cwd, timestamp, metadata)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		inv.ID,
+		inv.Source,
+		nullableString(inv.InstanceID),
+		nullableString(inv.HostID),
+		inv.ToolName,
+		boolToInt(inv.IsError),
+		nullableString(inv.Error),
+		nullableString(inv.CWD),
+		inv.Timestamp.UTC().Format(time.RFC3339Nano),
+		nullableJSON(inv.Metadata),
+	)
+	if err != nil {
+		return fmt.Errorf("insert invocation: %w", err)
+	}
+	return nil
 }
 
 // ListInvocations returns invocations matching the given filter options.
-// TODO(dp-pj3): implement with migration v2 invocations table.
 func (s *SQLiteStore) ListInvocations(ctx context.Context, opts InvocationOpts) ([]model.Invocation, error) {
-	return nil, fmt.Errorf("invocations table not yet migrated")
+	query := "SELECT id, source, instance_id, host_id, tool_name, is_error, error, cwd, timestamp, metadata FROM invocations WHERE 1=1"
+	var args []any
+
+	if !opts.Since.IsZero() {
+		query += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	if opts.Source != "" {
+		query += " AND source = ?"
+		args = append(args, opts.Source)
+	}
+	if opts.InstanceID != "" {
+		query += " AND instance_id = ?"
+		args = append(args, opts.InstanceID)
+	}
+	if opts.ToolName != "" {
+		query += " AND tool_name = ?"
+		args = append(args, opts.ToolName)
+	}
+	if opts.ErrorsOnly {
+		query += " AND is_error = 1"
+	}
+	query += " ORDER BY timestamp DESC"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list invocations: %w", err)
+	}
+	defer rows.Close()
+
+	var invocations []model.Invocation
+	for rows.Next() {
+		var inv model.Invocation
+		var instanceID, hostID, errStr, cwd, ts, metadata sql.NullString
+		var isError int
+		if err := rows.Scan(&inv.ID, &inv.Source, &instanceID, &hostID, &inv.ToolName, &isError, &errStr, &cwd, &ts, &metadata); err != nil {
+			return nil, fmt.Errorf("scan invocation: %w", err)
+		}
+		inv.InstanceID = instanceID.String
+		inv.HostID = hostID.String
+		inv.IsError = isError != 0
+		inv.Error = errStr.String
+		inv.CWD = cwd.String
+		if metadata.Valid && metadata.String != "" {
+			inv.Metadata = []byte(metadata.String)
+		}
+		t, err := time.Parse(time.RFC3339Nano, ts.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse timestamp %q: %w", ts.String, err)
+		}
+		inv.Timestamp = t
+		invocations = append(invocations, inv)
+	}
+	return invocations, rows.Err()
 }
 
 // InvocationStats returns summary statistics about stored invocations.
-// TODO(dp-pj3): implement with migration v2 invocations table.
 func (s *SQLiteStore) InvocationStats(ctx context.Context) (InvocationStatsResult, error) {
-	return InvocationStatsResult{}, fmt.Errorf("invocations table not yet migrated")
+	var st InvocationStatsResult
+
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM invocations").Scan(&st.Total); err != nil {
+		return st, fmt.Errorf("count invocations: %w", err)
+	}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT tool_name) FROM invocations").Scan(&st.UniqueTools); err != nil {
+		return st, fmt.Errorf("count unique tools: %w", err)
+	}
+
+	// Top sources (top 5).
+	srcRows, err := s.db.QueryContext(ctx,
+		"SELECT source, COUNT(*) as cnt FROM invocations GROUP BY source ORDER BY cnt DESC LIMIT 5")
+	if err != nil {
+		return st, fmt.Errorf("top sources: %w", err)
+	}
+	defer srcRows.Close()
+
+	for srcRows.Next() {
+		var nc NameCount
+		if err := srcRows.Scan(&nc.Name, &nc.Count); err != nil {
+			return st, fmt.Errorf("scan source: %w", err)
+		}
+		st.TopSources = append(st.TopSources, nc)
+	}
+	if err := srcRows.Err(); err != nil {
+		return st, err
+	}
+
+	// Top tools (top 5).
+	toolRows, err := s.db.QueryContext(ctx,
+		"SELECT tool_name, COUNT(*) as cnt FROM invocations GROUP BY tool_name ORDER BY cnt DESC LIMIT 5")
+	if err != nil {
+		return st, fmt.Errorf("top tools: %w", err)
+	}
+	defer toolRows.Close()
+
+	for toolRows.Next() {
+		var nc NameCount
+		if err := toolRows.Scan(&nc.Name, &nc.Count); err != nil {
+			return st, fmt.Errorf("scan tool: %w", err)
+		}
+		st.TopTools = append(st.TopTools, nc)
+	}
+	if err := toolRows.Err(); err != nil {
+		return st, err
+	}
+
+	// Date range.
+	if st.Total > 0 {
+		var earliest, latest string
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT MIN(timestamp), MAX(timestamp) FROM invocations").Scan(&earliest, &latest); err != nil {
+			return st, fmt.Errorf("date range: %w", err)
+		}
+		st.Earliest, _ = time.Parse(time.RFC3339Nano, earliest)
+		st.Latest, _ = time.Parse(time.RFC3339Nano, latest)
+	}
+
+	// Time-window counts.
+	now := time.Now().UTC()
+	for _, w := range []struct {
+		dur time.Duration
+		dst *int
+	}{
+		{24 * time.Hour, &st.Last24h},
+		{7 * 24 * time.Hour, &st.Last7d},
+		{30 * 24 * time.Hour, &st.Last30d},
+	} {
+		since := now.Add(-w.dur).Format(time.RFC3339Nano)
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM invocations WHERE timestamp >= ?", since).Scan(w.dst); err != nil {
+			return st, fmt.Errorf("count since %v: %w", w.dur, err)
+		}
+	}
+
+	return st, nil
 }
 
 // Close releases the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
+}
+
+// boolToInt converts a bool to an integer for SQLite storage.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // nullableString returns nil for empty strings, otherwise the string value.
