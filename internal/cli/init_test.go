@@ -67,7 +67,7 @@ func TestInitCmdClaudeCodeConflictsWithDifferentSource(t *testing.T) {
 }
 
 func TestRunInitUnknownSource(t *testing.T) {
-	err := runInit("nonexistent-source")
+	err := runInit("nonexistent-source", false)
 	if err == nil {
 		t.Fatal("expected error for unknown source")
 	}
@@ -80,7 +80,7 @@ func TestRunInitSourceWithoutInstaller(t *testing.T) {
 	// Register a source that does NOT implement Installer.
 	source.Register(&noInstallerSource{name: "test-no-installer-init"})
 
-	err := runInit("test-no-installer-init")
+	err := runInit("test-no-installer-init", false)
 	if err == nil {
 		t.Fatal("expected error for source without Installer")
 	}

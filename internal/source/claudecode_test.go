@@ -198,7 +198,7 @@ func TestClaudeCodeInstall(t *testing.T) {
 	settingsPath := filepath.Join(dir, ".claude", "settings.json")
 
 	c := &claudeCode{}
-	if err := c.Install(settingsPath); err != nil {
+	if err := c.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("Install() error: %v", err)
 	}
 
@@ -248,10 +248,10 @@ func TestClaudeCodeInstallIdempotent(t *testing.T) {
 	c := &claudeCode{}
 
 	// Install twice.
-	if err := c.Install(settingsPath); err != nil {
+	if err := c.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("first Install() error: %v", err)
 	}
-	if err := c.Install(settingsPath); err != nil {
+	if err := c.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("second Install() error: %v", err)
 	}
 
@@ -324,7 +324,7 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 	}
 
 	c := &claudeCode{}
-	if err := c.Install(settingsPath); err != nil {
+	if err := c.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("Install() error: %v", err)
 	}
 

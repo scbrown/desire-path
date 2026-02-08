@@ -84,7 +84,8 @@ type claudeCodeInstaller struct {
 	claudeCodeSource
 }
 
-func (c *claudeCodeInstaller) Install(settingsPath string) error {
+func (c *claudeCodeInstaller) Install(opts InstallOpts) error {
+	settingsPath := opts.SettingsPath
 	const hookCommand = "dp record --source claude-code"
 
 	// Read existing settings or start fresh.
@@ -394,7 +395,7 @@ func TestClaudeCodeInstallerCreatesHooks(t *testing.T) {
 	settingsPath := filepath.Join(dir, ".claude", "settings.json")
 
 	installer := &claudeCodeInstaller{}
-	if err := installer.Install(settingsPath); err != nil {
+	if err := installer.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 
@@ -453,10 +454,10 @@ func TestClaudeCodeInstallerIdempotent(t *testing.T) {
 	installer := &claudeCodeInstaller{}
 
 	// Install twice.
-	if err := installer.Install(settingsPath); err != nil {
+	if err := installer.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("first Install: %v", err)
 	}
-	if err := installer.Install(settingsPath); err != nil {
+	if err := installer.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
 
@@ -506,7 +507,7 @@ func TestInstallerInterface(t *testing.T) {
 	var i Installer = &claudeCodeInstaller{}
 	// Verify Install works with a fresh temp path.
 	path := filepath.Join(t.TempDir(), "settings.json")
-	if err := i.Install(path); err != nil {
+	if err := i.Install(InstallOpts{SettingsPath: path}); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 }

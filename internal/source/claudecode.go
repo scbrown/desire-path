@@ -94,16 +94,21 @@ func (c *claudeCode) Extract(raw []byte) (*Fields, error) {
 	return &f, nil
 }
 
-// Install configures the Claude Code PostToolUseFailure hook by merging
-// dp's hook entry into the settings file at settingsPath. If settingsPath
-// is empty, the default ~/.claude/settings.json is used.
-func (c *claudeCode) Install(settingsPath string) error {
+// Install configures Claude Code hooks. By default it installs the
+// PostToolUseFailure → dp record hook. When opts.TrackAll is true, it
+// additionally installs dp ingest on PostToolUse and PostToolUseFailure
+// to record all invocations.
+func (c *claudeCode) Install(opts InstallOpts) error {
+	settingsPath := opts.SettingsPath
 	if settingsPath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return fmt.Errorf("determine home directory: %w", err)
 		}
 		settingsPath = filepath.Join(home, ".claude", "settings.json")
+	}
+	if opts.TrackAll {
+		return setupClaudeCodeWithIngest(settingsPath)
 	}
 	return setupClaudeCodeAt(settingsPath)
 }
@@ -127,34 +132,58 @@ type claudeHookInner struct {
 // dpHookCommand is the command dp installs for PostToolUseFailure.
 const dpHookCommand = "dp record --source claude-code"
 
-// setupClaudeCodeAt performs the Claude Code setup using the given settings path.
+// dpIngestCommand is the command for recording all invocations.
+const dpIngestCommand = "dp ingest --source claude-code"
+
+// setupClaudeCodeAt installs the PostToolUseFailure → dp record hook.
 func setupClaudeCodeAt(settingsPath string) error {
+	return installClaudeHooks(settingsPath, false)
+}
+
+// setupClaudeCodeWithIngest installs all hooks including PostToolUse → dp ingest.
+func setupClaudeCodeWithIngest(settingsPath string) error {
+	return installClaudeHooks(settingsPath, true)
+}
+
+// installClaudeHooks performs the Claude Code setup using the given settings path.
+// When trackAll is true, it additionally installs dp ingest hooks on PostToolUse
+// and PostToolUseFailure to record all invocations (not just failures).
+func installClaudeHooks(settingsPath string, trackAll bool) error {
 	settings, err := readClaudeSettings(settingsPath)
 	if err != nil {
 		return err
 	}
 
-	dpHook := claudeHookEntry{
-		Matcher: ".*",
-		Hooks: []claudeHookInner{
-			{
-				Type:    "command",
-				Command: dpHookCommand,
-				Timeout: 5000,
+	type hookDef struct {
+		event   string
+		command string
+	}
+	defs := []hookDef{
+		{"PostToolUseFailure", dpHookCommand},
+	}
+	if trackAll {
+		defs = append(defs,
+			hookDef{"PostToolUse", dpIngestCommand},
+			hookDef{"PostToolUseFailure", dpIngestCommand},
+		)
+	}
+
+	for _, d := range defs {
+		hooks, err := mergeHookEvent(settings, d.event, claudeHookEntry{
+			Matcher: ".*",
+			Hooks: []claudeHookInner{
+				{Type: "command", Command: d.command, Timeout: 5000},
 			},
-		},
+		})
+		if err != nil {
+			return err
+		}
+		hooksJSON, err := json.Marshal(hooks)
+		if err != nil {
+			return fmt.Errorf("marshal hooks: %w", err)
+		}
+		settings["hooks"] = hooksJSON
 	}
-
-	hooks, err := mergeHookEvent(settings, "PostToolUseFailure", dpHook)
-	if err != nil {
-		return err
-	}
-
-	hooksJSON, err := json.Marshal(hooks)
-	if err != nil {
-		return fmt.Errorf("marshal hooks: %w", err)
-	}
-	settings["hooks"] = hooksJSON
 
 	return writeClaudeSettings(settingsPath, settings)
 }

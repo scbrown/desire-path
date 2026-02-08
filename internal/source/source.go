@@ -39,12 +39,24 @@ type Fields struct {
 	Extra map[string]json.RawMessage `json:"extra,omitempty"`
 }
 
+// InstallOpts controls what hooks are installed by an Installer.
+type InstallOpts struct {
+	// SettingsPath overrides the default settings file location.
+	// Empty means use the source's default.
+	SettingsPath string
+
+	// TrackAll enables invocation tracking hooks (PostToolUse + PostToolUseFailure
+	// → dp ingest) in addition to the default failure-only hooks. This can
+	// generate significant data since it fires on every tool call.
+	TrackAll bool
+}
+
 // Installer is an optional interface that source plugins can implement
 // to provide setup and integration support (e.g., configuring hooks
 // for dp init).
 type Installer interface {
-	// Install configures the source integration at the given settings path.
-	Install(settingsPath string) error
+	// Install configures the source integration using the given options.
+	Install(opts InstallOpts) error
 }
 
 var (

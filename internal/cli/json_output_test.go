@@ -267,20 +267,20 @@ func TestInitCmdJSON(t *testing.T) {
 	stdout, _ := captureStdoutAndStderr(t, func() {
 		jsonOutput = true
 		defer func() { jsonOutput = false }()
-		if err := runInit("claude-code"); err != nil {
+		if err := runInit("claude-code", false); err != nil {
 			t.Fatalf("runInit: %v", err)
 		}
 	})
 
-	var result map[string]string
+	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
 	}
 	if result["status"] != "configured" {
-		t.Errorf("status = %q, want %q", result["status"], "configured")
+		t.Errorf("status = %v, want %q", result["status"], "configured")
 	}
 	if result["source"] != "claude-code" {
-		t.Errorf("source = %q, want %q", result["source"], "claude-code")
+		t.Errorf("source = %v, want %q", result["source"], "claude-code")
 	}
 }
 
