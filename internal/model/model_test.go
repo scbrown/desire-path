@@ -302,6 +302,148 @@ func TestPathZeroCount(t *testing.T) {
 	}
 }
 
+func TestInvocationRoundTrip(t *testing.T) {
+	ts := time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		inv  Invocation
+	}{
+		{
+			name: "full invocation",
+			inv: Invocation{
+				ID:         "inv-123",
+				Source:     "claude-code",
+				InstanceID: "inst-abc",
+				HostID:     "host-xyz",
+				ToolName:   "Read",
+				IsError:    true,
+				Error:      "file not found",
+				CWD:        "/home/user/project",
+				Timestamp:  ts,
+				Metadata:   json.RawMessage(`{"hook_event":"PostToolUseFailure"}`),
+			},
+		},
+		{
+			name: "minimal invocation",
+			inv: Invocation{
+				ID:        "inv-456",
+				Source:    "claude-code",
+				ToolName:  "Bash",
+				Timestamp: ts,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.inv)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var got Invocation
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if got.ID != tt.inv.ID {
+				t.Errorf("ID: got %q, want %q", got.ID, tt.inv.ID)
+			}
+			if got.Source != tt.inv.Source {
+				t.Errorf("Source: got %q, want %q", got.Source, tt.inv.Source)
+			}
+			if got.InstanceID != tt.inv.InstanceID {
+				t.Errorf("InstanceID: got %q, want %q", got.InstanceID, tt.inv.InstanceID)
+			}
+			if got.HostID != tt.inv.HostID {
+				t.Errorf("HostID: got %q, want %q", got.HostID, tt.inv.HostID)
+			}
+			if got.ToolName != tt.inv.ToolName {
+				t.Errorf("ToolName: got %q, want %q", got.ToolName, tt.inv.ToolName)
+			}
+			if got.IsError != tt.inv.IsError {
+				t.Errorf("IsError: got %v, want %v", got.IsError, tt.inv.IsError)
+			}
+			if got.Error != tt.inv.Error {
+				t.Errorf("Error: got %q, want %q", got.Error, tt.inv.Error)
+			}
+			if got.CWD != tt.inv.CWD {
+				t.Errorf("CWD: got %q, want %q", got.CWD, tt.inv.CWD)
+			}
+			if !got.Timestamp.Equal(tt.inv.Timestamp) {
+				t.Errorf("Timestamp: got %v, want %v", got.Timestamp, tt.inv.Timestamp)
+			}
+			if string(got.Metadata) != string(tt.inv.Metadata) {
+				t.Errorf("Metadata: got %s, want %s", got.Metadata, tt.inv.Metadata)
+			}
+		})
+	}
+}
+
+func TestInvocationOmitsEmptyFields(t *testing.T) {
+	inv := Invocation{
+		ID:        "inv-omit",
+		Source:    "claude-code",
+		ToolName:  "Bash",
+		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	data, err := json.Marshal(inv)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal to map: %v", err)
+	}
+	for _, key := range []string{"instance_id", "host_id", "is_error", "error", "cwd", "metadata"} {
+		if _, ok := m[key]; ok {
+			t.Errorf("expected %q to be omitted for zero value", key)
+		}
+	}
+}
+
+func TestInvocationFromExternalJSON(t *testing.T) {
+	raw := `{
+		"id": "inv-ext",
+		"source": "claude-code",
+		"instance_id": "inst-1",
+		"host_id": "host-1",
+		"tool_name": "Read",
+		"is_error": false,
+		"cwd": "/home/user",
+		"timestamp": "2026-02-07T12:00:00Z",
+		"metadata": {"transcript_path": "/tmp/transcript.json"}
+	}`
+	var inv Invocation
+	if err := json.Unmarshal([]byte(raw), &inv); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if inv.ID != "inv-ext" {
+		t.Errorf("ID = %q, want %q", inv.ID, "inv-ext")
+	}
+	if inv.Source != "claude-code" {
+		t.Errorf("Source = %q, want %q", inv.Source, "claude-code")
+	}
+	if inv.ToolName != "Read" {
+		t.Errorf("ToolName = %q, want %q", inv.ToolName, "Read")
+	}
+	if inv.IsError != false {
+		t.Errorf("IsError = %v, want false", inv.IsError)
+	}
+
+	data, err := json.Marshal(inv)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var inv2 Invocation
+	if err := json.Unmarshal(data, &inv2); err != nil {
+		t.Fatalf("unmarshal round-trip: %v", err)
+	}
+	if inv2.ToolName != inv.ToolName {
+		t.Errorf("round-trip ToolName = %q, want %q", inv2.ToolName, inv.ToolName)
+	}
+	if !inv2.Timestamp.Equal(inv.Timestamp) {
+		t.Errorf("round-trip Timestamp = %v, want %v", inv2.Timestamp, inv.Timestamp)
+	}
+}
+
 func TestAliasEmptyTo(t *testing.T) {
 	// An alias with empty To field should still round-trip.
 	a := Alias{

@@ -36,3 +36,18 @@ type Alias struct {
 	To        string    `json:"to"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// Invocation represents a single tool invocation from an AI coding assistant.
+// Source-specific fields (hook_event, transcript_path, tool_use_id) belong in Metadata.
+type Invocation struct {
+	ID         string          `json:"id"`
+	Source     string          `json:"source"`
+	InstanceID string          `json:"instance_id,omitempty"`
+	HostID     string          `json:"host_id,omitempty"`
+	ToolName   string          `json:"tool_name"`
+	IsError    bool            `json:"is_error,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	CWD        string          `json:"cwd,omitempty"`
+	Timestamp  time.Time       `json:"timestamp"`
+	Metadata   json.RawMessage `json:"metadata,omitempty"`
+}
