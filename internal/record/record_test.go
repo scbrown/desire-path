@@ -39,13 +39,13 @@ func (f *fakeStore) Stats(context.Context) (store.Stats, error)        { return 
 func (f *fakeStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) {
 	return &store.InspectResult{}, nil
 }
-func (f *fakeStore) RecordInvocation(context.Context, model.Invocation) error {
+func (f *fakeStore) RecordInvocation(_ context.Context, _ model.Invocation) error {
 	return nil
 }
-func (f *fakeStore) ListInvocations(context.Context, store.InvocationOpts) ([]model.Invocation, error) {
+func (f *fakeStore) ListInvocations(_ context.Context, _ store.InvocationOpts) ([]model.Invocation, error) {
 	return nil, nil
 }
-func (f *fakeStore) InvocationStats(context.Context) (store.InvocationStatsResult, error) {
+func (f *fakeStore) InvocationStats(_ context.Context) (store.InvocationStatsResult, error) {
 	return store.InvocationStatsResult{}, nil
 }
 func (f *fakeStore) Close() error { return nil }
