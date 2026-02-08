@@ -475,6 +475,24 @@ func (s *SQLiteStore) InspectPath(ctx context.Context, opts InspectOpts) (*Inspe
 	return &result, nil
 }
 
+// RecordInvocation persists a single tool invocation.
+// TODO(dp-pj3): implement with migration v2 invocations table.
+func (s *SQLiteStore) RecordInvocation(ctx context.Context, inv model.Invocation) error {
+	return fmt.Errorf("invocations table not yet migrated")
+}
+
+// ListInvocations returns invocations matching the given filter options.
+// TODO(dp-pj3): implement with migration v2 invocations table.
+func (s *SQLiteStore) ListInvocations(ctx context.Context, opts InvocationOpts) ([]model.Invocation, error) {
+	return nil, fmt.Errorf("invocations table not yet migrated")
+}
+
+// InvocationStats returns summary statistics about stored invocations.
+// TODO(dp-pj3): implement with migration v2 invocations table.
+func (s *SQLiteStore) InvocationStats(ctx context.Context) (InvocationStatsResult, error) {
+	return InvocationStatsResult{}, fmt.Errorf("invocations table not yet migrated")
+}
+
 // Close releases the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
