@@ -25,12 +25,18 @@ type Source interface {
 // Only fields common to all sources live here; source-specific
 // fields go into the Extra map.
 type Fields struct {
-	ToolName   string                     `json:"tool_name"`
-	InstanceID string                     `json:"instance_id,omitempty"`
-	ToolInput  json.RawMessage            `json:"tool_input,omitempty"`
-	CWD        string                     `json:"cwd,omitempty"`
-	Error      string                     `json:"error,omitempty"`
-	Extra      map[string]json.RawMessage `json:"extra,omitempty"`
+	// ToolName is the name of the AI tool that was invoked (required).
+	ToolName string `json:"tool_name"`
+	// InstanceID is an optional session or invocation identifier.
+	InstanceID string `json:"instance_id,omitempty"`
+	// ToolInput is the raw JSON input passed to the tool (optional).
+	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+	// CWD is the working directory at the time of the tool call (optional).
+	CWD string `json:"cwd,omitempty"`
+	// Error is the error message if the tool call failed (optional).
+	Error string `json:"error,omitempty"`
+	// Extra holds source-specific fields not mapped to universal fields.
+	Extra map[string]json.RawMessage `json:"extra,omitempty"`
 }
 
 // Installer is an optional interface that source plugins can implement

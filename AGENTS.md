@@ -13,8 +13,10 @@ See `docs/plans/001-initial-plan.md` for the full architecture and design.
 ```
 cmd/dp/          Entry point. Thin main.go that calls into internal/cli.
 internal/        Private packages - not importable by external code.
-  model/         Core types: Desire, Path, Alias.
+  model/         Core types: Desire, Path, Alias, Invocation.
   store/         Storage interface + SQLite implementation.
+  source/        Source plugin interface, registry, and built-in plugins.
+  ingest/        Raw payload → Invocation conversion and persistence.
   record/        Stdin JSON parsing and desire recording.
   analyze/       Similarity engine for tool name suggestions.
   config/        Configuration file (~/.dp/config.json) management.
@@ -27,6 +29,14 @@ docs/tasks/      Task breakdowns for implementation phases.
 
 - `internal/` is for packages only used by `dp` itself. Go enforces this boundary.
 - `pkg/desirepath/` is planned as a public Go library for programmatic integration but is not yet implemented.
+
+#### source
+
+Defines the `Source` plugin interface for extracting structured fields from raw AI tool call payloads. Each plugin handles one tool's format (e.g., Claude Code). The package provides a thread-safe registry (`Register`, `Get`, `Names`) and the universal `Fields` struct that normalizes data across sources. Plugins self-register via `init()`. The optional `Installer` interface lets plugins provide setup logic for `dp init`. See [Source Plugins](#source-plugins) below.
+
+#### ingest
+
+Bridges source extraction and storage. The `Ingest` function looks up a registered source plugin by name, calls `Extract` on raw bytes, converts the resulting `Fields` into a `model.Invocation` (auto-generating UUID and timestamp), and persists it via `store.RecordInvocation`. This is the single entry point for recording tool call data from any source.
 
 ## Documentation Hygiene
 
@@ -154,6 +164,46 @@ The `default_format` config key can set JSON as default output; the `--json` fla
 ### Configuration
 
 `dp config` manages settings in `~/.dp/config.json` via the `internal/config` package. Valid keys: `db_path`, `default_source`, `known_tools`, `default_format`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags.
+
+## Source Plugins
+
+The `internal/source` package uses a plugin architecture for extracting structured data from different AI tools. Each tool (Claude Code, Cursor, etc.) has its own plugin that knows how to parse that tool's raw payload format.
+
+### Writing a Source Plugin
+
+1. **Implement `source.Source`**: provide `Name()` (lowercase, hyphenated identifier like `"claude-code"`) and `Extract(raw []byte) (*Fields, error)`.
+2. **Self-register in `init()`**: call `source.Register(&yourPlugin{})` so the plugin is available as soon as the package is imported.
+3. **Map to universal `Fields`**: extract `ToolName` (required), `InstanceID`, `ToolInput`, `CWD`, and `Error` into the struct fields. Put everything else into `Fields.Extra`.
+4. **Import for side effects**: add a blank import (`_ "github.com/scbrown/desire-path/internal/source"`) where plugins need to be loaded (e.g., in `cmd/dp/`).
+
+### Installer Interface (Optional)
+
+Plugins that need setup during `dp init` implement the `Installer` interface:
+
+```go
+type Installer interface {
+    Install(settingsPath string) error
+}
+```
+
+Conventions for `Install` implementations:
+
+- Accept `settingsPath` as parameter; use a sensible default (e.g., `~/.claude/settings.json`) when empty.
+- Read existing settings and merge — never clobber user config.
+- Be idempotent: check whether the hook/config already exists before adding.
+- Create parent directories as needed (`os.MkdirAll`).
+- Wrap errors with context (`fmt.Errorf("...: %w", err)`).
+
+The `dp init` command checks each registered source with a type assertion (`s.(source.Installer)`) and calls `Install` for plugins that support it.
+
+### Data Flow
+
+```
+Raw hook payload (JSON bytes)
+  → source.Source.Extract()     → source.Fields (universal)
+  → ingest.Ingest()             → model.Invocation (UUID, timestamp added)
+  → store.RecordInvocation()    → SQLite
+```
 
 ## SQLite Conventions
 
