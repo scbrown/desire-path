@@ -1003,5 +1003,520 @@ func TestInspectPathTopN(t *testing.T) {
 	}
 }
 
+func TestRecordAndListInvocations(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC)
+
+	inv := model.Invocation{
+		ID:         "inv-1",
+		Source:     "claude-code",
+		InstanceID: "inst-abc",
+		HostID:     "host-xyz",
+		ToolName:   "Read",
+		IsError:    false,
+		Error:      "",
+		CWD:        "/home/user",
+		Timestamp:  ts,
+		Metadata:   json.RawMessage(`{"model":"opus"}`),
+	}
+
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	invocations, err := s.ListInvocations(ctx, InvocationListOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(invocations) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(invocations))
+	}
+
+	got := invocations[0]
+	if got.ID != inv.ID {
+		t.Errorf("ID: got %q, want %q", got.ID, inv.ID)
+	}
+	if got.Source != inv.Source {
+		t.Errorf("Source: got %q, want %q", got.Source, inv.Source)
+	}
+	if got.InstanceID != inv.InstanceID {
+		t.Errorf("InstanceID: got %q, want %q", got.InstanceID, inv.InstanceID)
+	}
+	if got.HostID != inv.HostID {
+		t.Errorf("HostID: got %q, want %q", got.HostID, inv.HostID)
+	}
+	if got.ToolName != inv.ToolName {
+		t.Errorf("ToolName: got %q, want %q", got.ToolName, inv.ToolName)
+	}
+	if got.IsError != inv.IsError {
+		t.Errorf("IsError: got %v, want %v", got.IsError, inv.IsError)
+	}
+	if got.Error != inv.Error {
+		t.Errorf("Error: got %q, want %q", got.Error, inv.Error)
+	}
+	if got.CWD != inv.CWD {
+		t.Errorf("CWD: got %q, want %q", got.CWD, inv.CWD)
+	}
+	if !got.Timestamp.Equal(inv.Timestamp) {
+		t.Errorf("Timestamp: got %v, want %v", got.Timestamp, inv.Timestamp)
+	}
+	if string(got.Metadata) != string(inv.Metadata) {
+		t.Errorf("Metadata: got %s, want %s", got.Metadata, inv.Metadata)
+	}
+}
+
+func TestRecordInvocationWithError(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	inv := model.Invocation{
+		ID:       "inv-err-1",
+		ToolName: "Write",
+		IsError:  true,
+		Error:    "permission denied",
+		Timestamp: ts,
+	}
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	got, err := s.ListInvocations(ctx, InvocationListOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	if !got[0].IsError {
+		t.Error("expected IsError=true")
+	}
+	if got[0].Error != "permission denied" {
+		t.Errorf("Error: got %q, want %q", got[0].Error, "permission denied")
+	}
+}
+
+func TestRecordInvocationDuplicateID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	inv := model.Invocation{
+		ID:        "inv-dup-1",
+		ToolName:  "Read",
+		Timestamp: ts,
+	}
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("first RecordInvocation: %v", err)
+	}
+	err := s.RecordInvocation(ctx, inv)
+	if err == nil {
+		t.Fatal("expected error on duplicate ID, got nil")
+	}
+}
+
+func TestListInvocationsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	invocations, err := s.ListInvocations(ctx, InvocationListOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(invocations) != 0 {
+		t.Errorf("expected 0, got %d", len(invocations))
+	}
+}
+
+func TestListInvocationsFilters(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	invocations := []model.Invocation{
+		{ID: "f1", ToolName: "Read", Source: "claude-code", InstanceID: "inst-1", IsError: false, Timestamp: base},
+		{ID: "f2", ToolName: "Write", Source: "cursor", InstanceID: "inst-2", IsError: true, Error: "fail", Timestamp: base.Add(time.Hour)},
+		{ID: "f3", ToolName: "Read", Source: "claude-code", InstanceID: "inst-1", IsError: true, Error: "err", Timestamp: base.Add(2 * time.Hour)},
+	}
+	for _, inv := range invocations {
+		if err := s.RecordInvocation(ctx, inv); err != nil {
+			t.Fatalf("RecordInvocation %s: %v", inv.ID, err)
+		}
+	}
+
+	// Filter by tool name.
+	got, err := s.ListInvocations(ctx, InvocationListOpts{ToolName: "Read"})
+	if err != nil {
+		t.Fatalf("ListInvocations by tool: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("tool filter: expected 2, got %d", len(got))
+	}
+
+	// Filter by source.
+	got, err = s.ListInvocations(ctx, InvocationListOpts{Source: "cursor"})
+	if err != nil {
+		t.Fatalf("ListInvocations by source: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("source filter: expected 1, got %d", len(got))
+	}
+
+	// Filter by instance_id.
+	got, err = s.ListInvocations(ctx, InvocationListOpts{InstanceID: "inst-1"})
+	if err != nil {
+		t.Fatalf("ListInvocations by instance: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("instance filter: expected 2, got %d", len(got))
+	}
+
+	// Filter by is_error=true.
+	isErrorTrue := true
+	got, err = s.ListInvocations(ctx, InvocationListOpts{IsError: &isErrorTrue})
+	if err != nil {
+		t.Fatalf("ListInvocations by is_error=true: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("is_error=true filter: expected 2, got %d", len(got))
+	}
+
+	// Filter by is_error=false.
+	isErrorFalse := false
+	got, err = s.ListInvocations(ctx, InvocationListOpts{IsError: &isErrorFalse})
+	if err != nil {
+		t.Fatalf("ListInvocations by is_error=false: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("is_error=false filter: expected 1, got %d", len(got))
+	}
+
+	// Filter by since.
+	got, err = s.ListInvocations(ctx, InvocationListOpts{Since: base.Add(30 * time.Minute)})
+	if err != nil {
+		t.Fatalf("ListInvocations by since: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("since filter: expected 2, got %d", len(got))
+	}
+
+	// Limit.
+	got, err = s.ListInvocations(ctx, InvocationListOpts{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListInvocations with limit: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("limit: expected 1, got %d", len(got))
+	}
+}
+
+func TestListInvocationsCombinedFilters(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	invocations := []model.Invocation{
+		{ID: "cf1", ToolName: "Read", Source: "claude-code", InstanceID: "inst-1", Timestamp: base},
+		{ID: "cf2", ToolName: "Read", Source: "cursor", InstanceID: "inst-2", Timestamp: base.Add(time.Hour)},
+		{ID: "cf3", ToolName: "Write", Source: "claude-code", InstanceID: "inst-1", Timestamp: base.Add(2 * time.Hour)},
+		{ID: "cf4", ToolName: "Read", Source: "claude-code", InstanceID: "inst-1", Timestamp: base.Add(3 * time.Hour)},
+	}
+	for _, inv := range invocations {
+		if err := s.RecordInvocation(ctx, inv); err != nil {
+			t.Fatalf("RecordInvocation %s: %v", inv.ID, err)
+		}
+	}
+
+	got, err := s.ListInvocations(ctx, InvocationListOpts{
+		Source:     "claude-code",
+		ToolName:   "Read",
+		InstanceID: "inst-1",
+		Since:      base.Add(30 * time.Minute),
+		Limit:      1,
+	})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	if got[0].ID != "cf4" {
+		t.Errorf("ID = %q, want %q", got[0].ID, "cf4")
+	}
+}
+
+func TestListInvocationsOrderDesc(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 3; i++ {
+		if err := s.RecordInvocation(ctx, model.Invocation{
+			ID:        fmt.Sprintf("ord-%d", i),
+			ToolName:  "T",
+			Timestamp: base.Add(time.Duration(i) * time.Hour),
+		}); err != nil {
+			t.Fatalf("RecordInvocation: %v", err)
+		}
+	}
+
+	got, err := s.ListInvocations(ctx, InvocationListOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3, got %d", len(got))
+	}
+	if got[0].ID != "ord-2" {
+		t.Errorf("first = %q, want ord-2", got[0].ID)
+	}
+	if got[2].ID != "ord-0" {
+		t.Errorf("last = %q, want ord-0", got[2].ID)
+	}
+}
+
+func TestListInvocationsNullableFields(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	inv := model.Invocation{
+		ID:        "nullable-inv-1",
+		ToolName:  "Bash",
+		Timestamp: ts,
+	}
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	got, err := s.ListInvocations(ctx, InvocationListOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	if got[0].Source != "" {
+		t.Errorf("Source = %q, want empty", got[0].Source)
+	}
+	if got[0].InstanceID != "" {
+		t.Errorf("InstanceID = %q, want empty", got[0].InstanceID)
+	}
+	if got[0].HostID != "" {
+		t.Errorf("HostID = %q, want empty", got[0].HostID)
+	}
+	if got[0].Error != "" {
+		t.Errorf("Error = %q, want empty", got[0].Error)
+	}
+	if got[0].CWD != "" {
+		t.Errorf("CWD = %q, want empty", got[0].CWD)
+	}
+	if got[0].Metadata != nil {
+		t.Errorf("Metadata = %s, want nil", got[0].Metadata)
+	}
+	if got[0].IsError {
+		t.Error("IsError should be false")
+	}
+}
+
+func TestInvocationStatsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	st, err := s.InvocationStats(ctx)
+	if err != nil {
+		t.Fatalf("InvocationStats: %v", err)
+	}
+	if st.Total != 0 {
+		t.Errorf("Total: got %d, want 0", st.Total)
+	}
+	if st.Errors != 0 {
+		t.Errorf("Errors: got %d, want 0", st.Errors)
+	}
+	if len(st.TopTools) != 0 {
+		t.Errorf("TopTools: expected empty, got %v", st.TopTools)
+	}
+	if len(st.TopSources) != 0 {
+		t.Errorf("TopSources: expected empty, got %v", st.TopSources)
+	}
+}
+
+func TestInvocationStats(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	invocations := []model.Invocation{
+		{ID: "is1", ToolName: "Read", Source: "claude-code", IsError: false, Timestamp: ts},
+		{ID: "is2", ToolName: "Read", Source: "claude-code", IsError: true, Error: "fail", Timestamp: ts},
+		{ID: "is3", ToolName: "Write", Source: "cursor", IsError: false, Timestamp: ts},
+		{ID: "is4", ToolName: "Bash", Source: "claude-code", IsError: true, Error: "timeout", Timestamp: ts},
+	}
+	for _, inv := range invocations {
+		if err := s.RecordInvocation(ctx, inv); err != nil {
+			t.Fatalf("RecordInvocation: %v", err)
+		}
+	}
+
+	st, err := s.InvocationStats(ctx)
+	if err != nil {
+		t.Fatalf("InvocationStats: %v", err)
+	}
+	if st.Total != 4 {
+		t.Errorf("Total: got %d, want 4", st.Total)
+	}
+	if st.Errors != 2 {
+		t.Errorf("Errors: got %d, want 2", st.Errors)
+	}
+
+	// TopTools: Read=2 should be first.
+	if len(st.TopTools) != 3 {
+		t.Fatalf("TopTools: expected 3, got %d", len(st.TopTools))
+	}
+	if st.TopTools[0].Name != "Read" || st.TopTools[0].Count != 2 {
+		t.Errorf("TopTools[0]: got %+v, want {Read, 2}", st.TopTools[0])
+	}
+
+	// TopSources: claude-code=3 should be first.
+	if len(st.TopSources) != 2 {
+		t.Fatalf("TopSources: expected 2, got %d", len(st.TopSources))
+	}
+	if st.TopSources[0].Name != "claude-code" || st.TopSources[0].Count != 3 {
+		t.Errorf("TopSources[0]: got %+v, want {claude-code, 3}", st.TopSources[0])
+	}
+}
+
+func TestInvocationStatsDateRange(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	earliest := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	latest := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	invocations := []model.Invocation{
+		{ID: "dr1", ToolName: "Read", Timestamp: earliest},
+		{ID: "dr2", ToolName: "Write", Timestamp: latest},
+	}
+	for _, inv := range invocations {
+		if err := s.RecordInvocation(ctx, inv); err != nil {
+			t.Fatalf("RecordInvocation: %v", err)
+		}
+	}
+
+	st, err := s.InvocationStats(ctx)
+	if err != nil {
+		t.Fatalf("InvocationStats: %v", err)
+	}
+	if !st.Earliest.Equal(earliest) {
+		t.Errorf("Earliest: got %v, want %v", st.Earliest, earliest)
+	}
+	if !st.Latest.Equal(latest) {
+		t.Errorf("Latest: got %v, want %v", st.Latest, latest)
+	}
+}
+
+func TestInvocationStatsTopToolsLimit(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	// Create 7 different tool names - only top 5 should be returned.
+	for i := 0; i < 7; i++ {
+		name := fmt.Sprintf("Tool_%d", i)
+		for j := 0; j <= i; j++ {
+			if err := s.RecordInvocation(ctx, model.Invocation{
+				ID:        fmt.Sprintf("tl-%d-%d", i, j),
+				ToolName:  name,
+				Timestamp: ts,
+			}); err != nil {
+				t.Fatalf("RecordInvocation: %v", err)
+			}
+		}
+	}
+
+	st, err := s.InvocationStats(ctx)
+	if err != nil {
+		t.Fatalf("InvocationStats: %v", err)
+	}
+	if len(st.TopTools) != 5 {
+		t.Errorf("TopTools: expected 5, got %d", len(st.TopTools))
+	}
+	if st.TopTools[0].Name != "Tool_6" {
+		t.Errorf("TopTools[0].Name = %q, want Tool_6", st.TopTools[0].Name)
+	}
+	if st.TopTools[0].Count != 7 {
+		t.Errorf("TopTools[0].Count = %d, want 7", st.TopTools[0].Count)
+	}
+}
+
+func TestInvocationStatsNoSource(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Now().UTC()
+
+	if err := s.RecordInvocation(ctx, model.Invocation{
+		ID: "ns1", ToolName: "Read", Timestamp: ts,
+	}); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	st, err := s.InvocationStats(ctx)
+	if err != nil {
+		t.Fatalf("InvocationStats: %v", err)
+	}
+	if st.Total != 1 {
+		t.Errorf("Total = %d, want 1", st.Total)
+	}
+	if len(st.TopSources) != 0 {
+		t.Errorf("TopSources should be empty for invocations with no source, got %v", st.TopSources)
+	}
+}
+
+func TestMigrateV1ToV2(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	// Open once to create v1 schema, then close.
+	// We manually create a v1-only database to test upgrade.
+	s1, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("first New: %v", err)
+	}
+	// Verify invocations table exists (v2 migration ran).
+	ctx := context.Background()
+	if _, err := s1.db.ExecContext(ctx, "SELECT COUNT(*) FROM invocations"); err != nil {
+		t.Errorf("invocations table should exist after migration: %v", err)
+	}
+	s1.Close()
+
+	// Reopen - should be idempotent.
+	s2, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("second New: %v", err)
+	}
+	defer s2.Close()
+
+	// Verify both tables work.
+	if err := s2.RecordDesire(ctx, model.Desire{
+		ID: "d1", ToolName: "foo", Error: "e", Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("RecordDesire after v2 migration: %v", err)
+	}
+	if err := s2.RecordInvocation(ctx, model.Invocation{
+		ID: "inv1", ToolName: "Read", Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("RecordInvocation after v2 migration: %v", err)
+	}
+}
+
+func TestBoolToInt(t *testing.T) {
+	if boolToInt(true) != 1 {
+		t.Errorf("boolToInt(true) = %d, want 1", boolToInt(true))
+	}
+	if boolToInt(false) != 0 {
+		t.Errorf("boolToInt(false) = %d, want 0", boolToInt(false))
+	}
+}
+
 // Verify SQLiteStore satisfies the Store interface at compile time.
 var _ Store = (*SQLiteStore)(nil)

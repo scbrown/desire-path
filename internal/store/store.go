@@ -34,6 +34,15 @@ type Store interface {
 	// InspectPath returns detailed inspection data for a specific tool name pattern.
 	InspectPath(ctx context.Context, opts InspectOpts) (*InspectResult, error)
 
+	// RecordInvocation persists a single tool invocation.
+	RecordInvocation(ctx context.Context, inv model.Invocation) error
+
+	// ListInvocations returns invocations matching the given filter options.
+	ListInvocations(ctx context.Context, opts InvocationListOpts) ([]model.Invocation, error)
+
+	// InvocationStats returns aggregate statistics about stored invocations.
+	InvocationStats(ctx context.Context) (InvocationStatsResult, error)
+
 	// Close releases any resources held by the store.
 	Close() error
 }
@@ -81,6 +90,26 @@ type InspectResult struct {
 type DateCount struct {
 	Date  string `json:"date"`
 	Count int    `json:"count"`
+}
+
+// InvocationListOpts controls filtering for ListInvocations.
+type InvocationListOpts struct {
+	Since      time.Time // Only invocations after this time.
+	Source     string    // Filter by source.
+	InstanceID string    // Filter by instance ID.
+	ToolName   string    // Filter by tool name.
+	IsError    *bool     // Filter by error status; nil means no filter.
+	Limit      int       // Maximum results; 0 means no limit.
+}
+
+// InvocationStatsResult holds aggregate statistics about stored invocations.
+type InvocationStatsResult struct {
+	Total      int         `json:"total"`
+	Errors     int         `json:"errors"`
+	TopTools   []NameCount `json:"top_tools"`
+	TopSources []NameCount `json:"top_sources"`
+	Earliest   time.Time   `json:"earliest"`
+	Latest     time.Time   `json:"latest"`
 }
 
 // Stats holds summary statistics about stored desires.
