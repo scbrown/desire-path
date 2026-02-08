@@ -36,6 +36,7 @@ func seedInspectDesires(t *testing.T, s *store.SQLiteStore) {
 func resetFlags(t *testing.T) {
 	t.Helper()
 	jsonOutput = false
+	exportType = "desires"
 }
 
 func TestInspectCmdBasic(t *testing.T) {
