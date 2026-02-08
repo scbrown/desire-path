@@ -39,6 +39,15 @@ func (f *fakeStore) Stats(context.Context) (store.Stats, error)        { return 
 func (f *fakeStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) {
 	return &store.InspectResult{}, nil
 }
+func (f *fakeStore) RecordInvocation(_ context.Context, _ model.Invocation) error {
+	return nil
+}
+func (f *fakeStore) ListInvocations(_ context.Context, _ store.InvocationOpts) ([]model.Invocation, error) {
+	return nil, nil
+}
+func (f *fakeStore) InvocationStats(_ context.Context) (store.InvocationStats, error) {
+	return store.InvocationStats{}, nil
+}
 func (f *fakeStore) Close() error { return nil }
 
 func TestRecord(t *testing.T) {
