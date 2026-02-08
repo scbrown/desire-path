@@ -263,14 +263,12 @@ func TestExportCmdJSONFlag(t *testing.T) {
 
 func TestInitCmdJSON(t *testing.T) {
 	resetFlags(t)
-	dir := t.TempDir()
-	settingsPath := filepath.Join(dir, ".claude", "settings.json")
 
 	stdout, _ := captureStdoutAndStderr(t, func() {
 		jsonOutput = true
 		defer func() { jsonOutput = false }()
-		if err := setupClaudeCodeAt(settingsPath); err != nil {
-			t.Fatalf("setupClaudeCodeAt: %v", err)
+		if err := runInit("claude-code"); err != nil {
+			t.Fatalf("runInit: %v", err)
 		}
 	})
 
@@ -281,14 +279,8 @@ func TestInitCmdJSON(t *testing.T) {
 	if result["status"] != "configured" {
 		t.Errorf("status = %q, want %q", result["status"], "configured")
 	}
-	if result["event"] != "PostToolUseFailure" {
-		t.Errorf("event = %q, want %q", result["event"], "PostToolUseFailure")
-	}
-	if result["command"] != dpHookCommand {
-		t.Errorf("command = %q, want %q", result["command"], dpHookCommand)
-	}
-	if result["settings_path"] != settingsPath {
-		t.Errorf("settings_path = %q, want %q", result["settings_path"], settingsPath)
+	if result["source"] != "claude-code" {
+		t.Errorf("source = %q, want %q", result["source"], "claude-code")
 	}
 }
 

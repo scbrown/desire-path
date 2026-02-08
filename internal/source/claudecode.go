@@ -95,8 +95,16 @@ func (c *claudeCode) Extract(raw []byte) (*Fields, error) {
 }
 
 // Install configures the Claude Code PostToolUseFailure hook by merging
-// dp's hook entry into the settings file at settingsPath.
+// dp's hook entry into the settings file at settingsPath. If settingsPath
+// is empty, the default ~/.claude/settings.json is used.
 func (c *claudeCode) Install(settingsPath string) error {
+	if settingsPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("determine home directory: %w", err)
+		}
+		settingsPath = filepath.Join(home, ".claude", "settings.json")
+	}
 	return setupClaudeCodeAt(settingsPath)
 }
 
@@ -137,7 +145,7 @@ func setupClaudeCodeAt(settingsPath string) error {
 		},
 	}
 
-	hooks, err := mergeHook(settings, dpHook)
+	hooks, err := mergeHookEvent(settings, "PostToolUseFailure", dpHook)
 	if err != nil {
 		return err
 	}
@@ -169,9 +177,9 @@ func readClaudeSettings(path string) (claudeSettings, error) {
 	return s, nil
 }
 
-// mergeHook merges the dp hook into the PostToolUseFailure hook list without
+// mergeHookEvent merges dpHook into the named event's hook list without
 // clobbering existing hooks.
-func mergeHook(settings claudeSettings, dpHook claudeHookEntry) (map[string]json.RawMessage, error) {
+func mergeHookEvent(settings claudeSettings, eventName string, dpHook claudeHookEntry) (map[string]json.RawMessage, error) {
 	hooks := make(map[string]json.RawMessage)
 	if raw, ok := settings["hooks"]; ok {
 		if err := json.Unmarshal(raw, &hooks); err != nil {
@@ -180,31 +188,32 @@ func mergeHook(settings claudeSettings, dpHook claudeHookEntry) (map[string]json
 	}
 
 	var entries []claudeHookEntry
-	if raw, ok := hooks["PostToolUseFailure"]; ok {
+	if raw, ok := hooks[eventName]; ok {
 		if err := json.Unmarshal(raw, &entries); err != nil {
-			return nil, fmt.Errorf("parse PostToolUseFailure hooks: %w", err)
+			return nil, fmt.Errorf("parse %s hooks: %w", eventName, err)
 		}
 	}
 
-	if hasDPHook(entries) {
+	if hasDPHookCommand(entries, dpHook.Hooks[0].Command) {
 		return hooks, nil
 	}
 
 	entries = append(entries, dpHook)
 	entriesJSON, err := json.Marshal(entries)
 	if err != nil {
-		return nil, fmt.Errorf("marshal PostToolUseFailure: %w", err)
+		return nil, fmt.Errorf("marshal %s: %w", eventName, err)
 	}
-	hooks["PostToolUseFailure"] = entriesJSON
+	hooks[eventName] = entriesJSON
 
 	return hooks, nil
 }
 
-// hasDPHook returns true if entries already contain a hook running dp record.
-func hasDPHook(entries []claudeHookEntry) bool {
+// hasDPHookCommand returns true if entries already contain a hook running
+// the given command.
+func hasDPHookCommand(entries []claudeHookEntry, command string) bool {
 	for _, e := range entries {
 		for _, h := range e.Hooks {
-			if h.Command == dpHookCommand {
+			if h.Command == command {
 				return true
 			}
 		}
