@@ -37,9 +37,9 @@ Use --type to select what to export: desires (default) or invocations.`,
   dp export --type invocations --format csv > invocations.csv
   dp export --type invocations --since 2024-01-01`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.New(dbPath)
+		s, err := openStore()
 		if err != nil {
-			return fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open store: %w", err)
 		}
 		defer s.Close()
 

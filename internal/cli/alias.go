@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/scbrown/desire-path/internal/model"
-	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -62,9 +61,9 @@ type aliasResult struct {
 }
 
 func setAlias(from, to string) error {
-	s, err := store.New(dbPath)
+	s, err := openStore()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer s.Close()
 
@@ -82,9 +81,9 @@ func setAlias(from, to string) error {
 }
 
 func deleteAlias(from string) error {
-	s, err := store.New(dbPath)
+	s, err := openStore()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer s.Close()
 
@@ -106,9 +105,9 @@ func deleteAlias(from string) error {
 }
 
 func listAliases() error {
-	s, err := store.New(dbPath)
+	s, err := openStore()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer s.Close()
 

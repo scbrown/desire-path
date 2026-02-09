@@ -26,9 +26,9 @@ invocations, unique tools, top sources, top tools, and time windows.`,
   dp stats --invocations
   dp stats --invocations --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.New(dbPath)
+		s, err := openStore()
 		if err != nil {
-			return fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open store: %w", err)
 		}
 		defer s.Close()
 

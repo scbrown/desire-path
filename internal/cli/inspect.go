@@ -37,9 +37,9 @@ for broader matching (e.g., "read%" matches read_file, read_dir, etc.).`,
   dp inspect read_file --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.New(dbPath)
+		s, err := openStore()
 		if err != nil {
-			return fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open store: %w", err)
 		}
 		defer s.Close()
 

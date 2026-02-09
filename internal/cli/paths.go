@@ -30,9 +30,9 @@ along with its frequency count, first/last occurrence, and any configured alias.
   dp paths --since 2026-02-01T00:00:00Z
   dp paths --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.New(dbPath)
+		s, err := openStore()
 		if err != nil {
-			return fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open store: %w", err)
 		}
 		defer s.Close()
 

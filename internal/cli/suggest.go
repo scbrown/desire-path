@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/scbrown/desire-path/internal/analyze"
-	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -41,9 +40,9 @@ overridden with the --known flag.`,
 		toolName := args[0]
 		w := cmd.OutOrStdout()
 
-		s, err := store.New(dbPath)
+		s, err := openStore()
 		if err != nil {
-			return fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open store: %w", err)
 		}
 		defer s.Close()
 

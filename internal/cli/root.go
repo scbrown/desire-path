@@ -2,16 +2,20 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/scbrown/desire-path/internal/config"
+	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
 
 var (
 	dbPath     string
 	jsonOutput bool
+	storeMode  string
+	remoteURL  string
 )
 
 func defaultDBPath() string {
@@ -58,12 +62,31 @@ machine-readable output.`,
 		if cfg.DefaultFormat == "json" && !cmd.Flags().Changed("json") {
 			jsonOutput = true
 		}
+		if cfg.StoreMode != "" && storeMode == "" {
+			storeMode = cfg.StoreMode
+		}
+		if cfg.RemoteURL != "" && remoteURL == "" {
+			remoteURL = cfg.RemoteURL
+		}
 	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", defaultDBPath(), "path to SQLite database")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
+}
+
+// openStore returns a store.Store based on the current configuration.
+// When store_mode is "remote", it returns a RemoteStore pointing at remote_url.
+// Otherwise it opens the local SQLite database.
+func openStore() (store.Store, error) {
+	if storeMode == "remote" {
+		if remoteURL == "" {
+			return nil, fmt.Errorf("store_mode is \"remote\" but remote_url is not set; use: dp config set remote_url <url>")
+		}
+		return store.NewRemote(remoteURL), nil
+	}
+	return store.New(dbPath)
 }
 
 // Execute runs the root command.

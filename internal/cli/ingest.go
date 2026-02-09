@@ -12,7 +12,6 @@ import (
 	"github.com/scbrown/desire-path/internal/ingest"
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/source"
-	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -94,9 +93,9 @@ func doIngest(sourceName string) (*model.Invocation, error) {
 		}
 	}
 
-	s, err := store.New(dbPath)
+	s, err := openStore()
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, fmt.Errorf("open store: %w", err)
 	}
 	defer s.Close()
 

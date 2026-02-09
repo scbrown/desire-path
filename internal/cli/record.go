@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/scbrown/desire-path/internal/record"
-	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -53,9 +52,9 @@ directly.`,
 		}
 
 		// Legacy path: no --source, generic JSON → desire only.
-		s, err := store.New(dbPath)
+		s, err := openStore()
 		if err != nil {
-			return fmt.Errorf("open database: %w", err)
+			return fmt.Errorf("open store: %w", err)
 		}
 		defer s.Close()
 

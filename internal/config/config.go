@@ -19,6 +19,8 @@ type Config struct {
 	KnownTools    []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
 	TrackTools    []string `toml:"track_tools,omitempty" json:"track_tools,omitempty"`
 	DefaultFormat string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
+	StoreMode     string   `toml:"store_mode,omitempty" json:"store_mode,omitempty"`
+	RemoteURL     string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
 }
 
 // validKeys lists the allowed configuration keys.
@@ -28,11 +30,13 @@ var validKeys = map[string]bool{
 	"known_tools":    true,
 	"track_tools":    true,
 	"default_format": true,
+	"store_mode":     true,
+	"remote_url":     true,
 }
 
 // ValidKeys returns the sorted list of valid configuration keys.
 func ValidKeys() []string {
-	return []string{"db_path", "default_format", "default_source", "known_tools", "track_tools"}
+	return []string{"db_path", "default_format", "default_source", "known_tools", "remote_url", "store_mode", "track_tools"}
 }
 
 // Path returns the default config file path (~/.dp/config.toml).
@@ -62,7 +66,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	// If the TOML file didn't exist, check for legacy JSON config.
-	if cfg.DBPath == "" && cfg.DefaultSource == "" && cfg.DefaultFormat == "" && len(cfg.KnownTools) == 0 && len(cfg.TrackTools) == 0 {
+	if cfg.DBPath == "" && cfg.DefaultSource == "" && cfg.DefaultFormat == "" && cfg.StoreMode == "" && cfg.RemoteURL == "" && len(cfg.KnownTools) == 0 && len(cfg.TrackTools) == 0 {
 		if _, statErr := os.Stat(Path()); errors.Is(statErr, os.ErrNotExist) {
 			legacy := jsonPath()
 			if _, legacyErr := os.Stat(legacy); legacyErr == nil {
@@ -167,6 +171,10 @@ func (c *Config) Get(key string) (string, error) {
 		return string(b), nil
 	case "default_format":
 		return c.DefaultFormat, nil
+	case "store_mode":
+		return c.StoreMode, nil
+	case "remote_url":
+		return c.RemoteURL, nil
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
@@ -208,6 +216,13 @@ func (c *Config) Set(key, value string) error {
 			return fmt.Errorf("default_format must be \"table\" or \"json\", got %q", value)
 		}
 		c.DefaultFormat = value
+	case "store_mode":
+		if value != "" && value != "local" && value != "remote" {
+			return fmt.Errorf("store_mode must be \"local\" or \"remote\", got %q", value)
+		}
+		c.StoreMode = value
+	case "remote_url":
+		c.RemoteURL = value
 	}
 	return nil
 }

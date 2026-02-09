@@ -150,8 +150,8 @@ func TestSetInvalidFormat(t *testing.T) {
 
 func TestValidKeys(t *testing.T) {
 	keys := ValidKeys()
-	if len(keys) != 5 {
-		t.Fatalf("expected 5 keys, got %d", len(keys))
+	if len(keys) != 7 {
+		t.Fatalf("expected 7 keys, got %d", len(keys))
 	}
 	// Verify sorted order.
 	for i := 1; i < len(keys); i++ {
