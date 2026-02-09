@@ -17,6 +17,7 @@ type Config struct {
 	DBPath        string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
 	DefaultSource string   `toml:"default_source,omitempty" json:"default_source,omitempty"`
 	KnownTools    []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
+	TrackTools    []string `toml:"track_tools,omitempty" json:"track_tools,omitempty"`
 	DefaultFormat string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
 }
 
@@ -25,12 +26,13 @@ var validKeys = map[string]bool{
 	"db_path":        true,
 	"default_source": true,
 	"known_tools":    true,
+	"track_tools":    true,
 	"default_format": true,
 }
 
 // ValidKeys returns the sorted list of valid configuration keys.
 func ValidKeys() []string {
-	return []string{"db_path", "default_format", "default_source", "known_tools"}
+	return []string{"db_path", "default_format", "default_source", "known_tools", "track_tools"}
 }
 
 // Path returns the default config file path (~/.dp/config.toml).
@@ -60,7 +62,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	// If the TOML file didn't exist, check for legacy JSON config.
-	if cfg.DBPath == "" && cfg.DefaultSource == "" && cfg.DefaultFormat == "" && len(cfg.KnownTools) == 0 {
+	if cfg.DBPath == "" && cfg.DefaultSource == "" && cfg.DefaultFormat == "" && len(cfg.KnownTools) == 0 && len(cfg.TrackTools) == 0 {
 		if _, statErr := os.Stat(Path()); errors.Is(statErr, os.ErrNotExist) {
 			legacy := jsonPath()
 			if _, legacyErr := os.Stat(legacy); legacyErr == nil {
@@ -154,6 +156,15 @@ func (c *Config) Get(key string) (string, error) {
 		return c.DefaultSource, nil
 	case "known_tools":
 		return strings.Join(c.KnownTools, ","), nil
+	case "track_tools":
+		if len(c.TrackTools) == 0 {
+			return "", nil
+		}
+		b, err := json.Marshal(c.TrackTools)
+		if err != nil {
+			return "", fmt.Errorf("marshaling track_tools: %w", err)
+		}
+		return string(b), nil
 	case "default_format":
 		return c.DefaultFormat, nil
 	default:
@@ -176,6 +187,21 @@ func (c *Config) Set(key, value string) error {
 			c.KnownTools = nil
 		} else {
 			c.KnownTools = strings.Split(value, ",")
+		}
+	case "track_tools":
+		if value == "" {
+			c.TrackTools = nil
+		} else {
+			var tools []string
+			if err := json.Unmarshal([]byte(value), &tools); err != nil {
+				return fmt.Errorf("track_tools must be a JSON array of strings, e.g. '[\"Read\",\"Bash\"]': %w", err)
+			}
+			for i, name := range tools {
+				if strings.TrimSpace(name) == "" {
+					return fmt.Errorf("track_tools[%d]: tool name must be non-empty", i)
+				}
+			}
+			c.TrackTools = tools
 		}
 	case "default_format":
 		if value != "" && value != "table" && value != "json" {

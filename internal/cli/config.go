@@ -23,12 +23,14 @@ Settings:
   db_path         Path to the SQLite database
   default_source  Default source tag for recorded desires
   known_tools     Comma-separated list of known tool names (for suggest)
+  track_tools     JSON array of tool names to track (empty = track all)
   default_format  Default output format: "table" or "json"`,
 	Example: `  dp config
   dp config db_path
   dp config db_path /custom/path/desires.db
   dp config default_source claude-code
   dp config known_tools Read,Write,Bash,Glob,Grep
+  dp config track_tools '["Read","Bash"]'
   dp config default_format json`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {

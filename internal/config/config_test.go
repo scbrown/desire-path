@@ -11,7 +11,7 @@ func TestLoadMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.DBPath != "" || cfg.DefaultSource != "" || cfg.DefaultFormat != "" || len(cfg.KnownTools) != 0 {
+	if cfg.DBPath != "" || cfg.DefaultSource != "" || cfg.DefaultFormat != "" || len(cfg.KnownTools) != 0 || len(cfg.TrackTools) != 0 {
 		t.Fatalf("expected empty config, got %+v", cfg)
 	}
 }
@@ -104,6 +104,8 @@ func TestGetSet(t *testing.T) {
 		{"default_format json", "default_format", "json", "json"},
 		{"known_tools", "known_tools", "Read,Write,Bash", "Read,Write,Bash"},
 		{"known_tools empty", "known_tools", "", ""},
+		{"track_tools", "track_tools", `["Read","Bash"]`, `["Read","Bash"]`},
+		{"track_tools empty", "track_tools", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -148,8 +150,8 @@ func TestSetInvalidFormat(t *testing.T) {
 
 func TestValidKeys(t *testing.T) {
 	keys := ValidKeys()
-	if len(keys) != 4 {
-		t.Fatalf("expected 4 keys, got %d", len(keys))
+	if len(keys) != 5 {
+		t.Fatalf("expected 5 keys, got %d", len(keys))
 	}
 	// Verify sorted order.
 	for i := 1; i < len(keys); i++ {
@@ -214,8 +216,54 @@ func TestSaveAndLoadEmptyConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFrom: %v", err)
 	}
-	if loaded.DBPath != "" || loaded.DefaultSource != "" || loaded.DefaultFormat != "" || len(loaded.KnownTools) != 0 {
+	if loaded.DBPath != "" || loaded.DefaultSource != "" || loaded.DefaultFormat != "" || len(loaded.KnownTools) != 0 || len(loaded.TrackTools) != 0 {
 		t.Errorf("expected all-empty config, got %+v", loaded)
+	}
+}
+
+func TestSetTrackToolsInvalidJSON(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.Set("track_tools", "not-json")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestSetTrackToolsEmptyName(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.Set("track_tools", `["Read","","Bash"]`)
+	if err == nil {
+		t.Fatal("expected error for empty tool name")
+	}
+}
+
+func TestSetTrackToolsWhitespaceName(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.Set("track_tools", `["Read","  ","Bash"]`)
+	if err == nil {
+		t.Fatal("expected error for whitespace-only tool name")
+	}
+}
+
+func TestSaveAndLoadTrackTools(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	cfg := &Config{
+		TrackTools: []string{"Read", "Bash"},
+	}
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(loaded.TrackTools) != 2 {
+		t.Fatalf("track_tools: got %d items, want 2", len(loaded.TrackTools))
+	}
+	for i, want := range []string{"Read", "Bash"} {
+		if loaded.TrackTools[i] != want {
+			t.Errorf("track_tools[%d]: got %q, want %q", i, loaded.TrackTools[i], want)
+		}
 	}
 }
 

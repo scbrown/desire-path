@@ -285,6 +285,52 @@ func TestConfigCmdSetInvalidFormat(t *testing.T) {
 	}
 }
 
+func TestConfigCmdSetTrackTools(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+	configPath = cfgPath
+	jsonOutput = false
+	defer func() {
+		configPath = config.Path()
+		jsonOutput = false
+	}()
+
+	rootCmd.SetArgs([]string{"config", "track_tools", `["Read","Bash"]`})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	cfg, err := config.LoadFrom(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.TrackTools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(cfg.TrackTools))
+	}
+	want := []string{"Read", "Bash"}
+	for i, w := range want {
+		if cfg.TrackTools[i] != w {
+			t.Errorf("track_tools[%d]: got %q, want %q", i, cfg.TrackTools[i], w)
+		}
+	}
+}
+
+func TestConfigCmdSetTrackToolsInvalid(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+	configPath = cfgPath
+	jsonOutput = false
+	defer func() {
+		configPath = config.Path()
+		jsonOutput = false
+	}()
+
+	rootCmd.SetArgs([]string{"config", "track_tools", "not-json"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
 func TestConfigCmdSetInvalidKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "config.toml")
