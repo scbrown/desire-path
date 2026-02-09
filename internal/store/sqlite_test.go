@@ -804,6 +804,39 @@ func TestDeleteAlias(t *testing.T) {
 	}
 }
 
+func TestGetAlias(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+
+	alias, err := s.GetAlias(ctx, "read_file")
+	if err != nil {
+		t.Fatalf("GetAlias: %v", err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.From != "read_file" || alias.To != "Read" {
+		t.Errorf("got %s->%s, want read_file->Read", alias.From, alias.To)
+	}
+}
+
+func TestGetAliasNotFound(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	alias, err := s.GetAlias(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("GetAlias: %v", err)
+	}
+	if alias != nil {
+		t.Errorf("expected nil for nonexistent alias, got %+v", alias)
+	}
+}
+
 func TestDeleteAliasNotFound(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

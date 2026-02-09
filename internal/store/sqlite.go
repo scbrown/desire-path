@@ -272,6 +272,23 @@ func (s *SQLiteStore) SetAlias(ctx context.Context, from, to string) error {
 	return nil
 }
 
+// GetAlias returns a single alias by its from_name, or nil if not found.
+func (s *SQLiteStore) GetAlias(ctx context.Context, from string) (*model.Alias, error) {
+	var a model.Alias
+	var createdAt string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT from_name, to_name, created_at FROM aliases WHERE from_name = ?", from,
+	).Scan(&a.From, &a.To, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get alias: %w", err)
+	}
+	a.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	return &a, nil
+}
+
 // GetAliases returns all configured tool name aliases.
 func (s *SQLiteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	rows, err := s.db.QueryContext(ctx,

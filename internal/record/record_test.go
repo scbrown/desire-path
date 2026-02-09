@@ -32,8 +32,9 @@ func (f *fakeStore) ListDesires(context.Context, store.ListOpts) ([]model.Desire
 func (f *fakeStore) GetPaths(context.Context, store.PathOpts) ([]model.Path, error) {
 	return nil, nil
 }
-func (f *fakeStore) SetAlias(context.Context, string, string) error   { return nil }
-func (f *fakeStore) GetAliases(context.Context) ([]model.Alias, error) { return nil, nil }
+func (f *fakeStore) SetAlias(context.Context, string, string) error          { return nil }
+func (f *fakeStore) GetAlias(context.Context, string) (*model.Alias, error)  { return nil, nil }
+func (f *fakeStore) GetAliases(context.Context) ([]model.Alias, error)       { return nil, nil }
 func (f *fakeStore) DeleteAlias(context.Context, string) (bool, error) { return false, nil }
 func (f *fakeStore) Stats(context.Context) (store.Stats, error)        { return store.Stats{}, nil }
 func (f *fakeStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) {

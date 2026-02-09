@@ -22,6 +22,9 @@ type Store interface {
 	// SetAlias creates or updates a mapping from a hallucinated tool name to a real one.
 	SetAlias(ctx context.Context, from, to string) error
 
+	// GetAlias returns a single alias by its from_name, or nil if not found.
+	GetAlias(ctx context.Context, from string) (*model.Alias, error)
+
 	// GetAliases returns all configured tool name aliases.
 	GetAliases(ctx context.Context) ([]model.Alias, error)
 

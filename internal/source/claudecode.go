@@ -218,8 +218,12 @@ func installClaudeHooks(settingsPath string) error {
 	return writeClaudeSettings(settingsPath, settings)
 }
 
-// readClaudeSettings reads and parses the settings file, returning an empty
+// ReadClaudeSettings reads and parses the settings file, returning an empty
 // map if the file does not exist.
+func ReadClaudeSettings(path string) (claudeSettings, error) {
+	return readClaudeSettings(path)
+}
+
 func readClaudeSettings(path string) (claudeSettings, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -267,6 +271,48 @@ func mergeHookEvent(settings claudeSettings, eventName string, dpHook claudeHook
 	return hooks, nil
 }
 
+// HasDPHook checks whether a specific hook command is installed for the given
+// event in the parsed settings.
+func HasDPHook(settings claudeSettings, event, command string) bool {
+	raw, ok := settings["hooks"]
+	if !ok {
+		return false
+	}
+	var hooks map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &hooks); err != nil {
+		return false
+	}
+	eventRaw, ok := hooks[event]
+	if !ok {
+		return false
+	}
+	var entries []claudeHookEntry
+	if err := json.Unmarshal(eventRaw, &entries); err != nil {
+		return false
+	}
+	return hasDPHookCommand(entries, command)
+}
+
+// MergeClaudeHook adds a hook command for the given event into settings,
+// without clobbering existing hooks. The settings map is modified in place.
+func MergeClaudeHook(settings claudeSettings, event, command string, timeout int) error {
+	hooks, err := mergeHookEvent(settings, event, claudeHookEntry{
+		Matcher: ".*",
+		Hooks: []claudeHookInner{
+			{Type: "command", Command: command, Timeout: timeout},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	hooksJSON, err := json.Marshal(hooks)
+	if err != nil {
+		return fmt.Errorf("marshal hooks: %w", err)
+	}
+	settings["hooks"] = hooksJSON
+	return nil
+}
+
 // hasDPHookCommand returns true if entries already contain a hook running
 // the given command.
 func hasDPHookCommand(entries []claudeHookEntry, command string) bool {
@@ -280,8 +326,12 @@ func hasDPHookCommand(entries []claudeHookEntry, command string) bool {
 	return false
 }
 
-// writeClaudeSettings writes settings back to the file, creating the parent
+// WriteClaudeSettings writes settings back to the file, creating the parent
 // directory if needed.
+func WriteClaudeSettings(path string, settings claudeSettings) error {
+	return writeClaudeSettings(path, settings)
+}
+
 func writeClaudeSettings(path string, settings claudeSettings) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

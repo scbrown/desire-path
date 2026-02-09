@@ -75,6 +75,17 @@ func (r *RemoteStore) SetAlias(ctx context.Context, from, to string) error {
 	return r.postJSON(ctx, "/api/v1/aliases", body, nil)
 }
 
+func (r *RemoteStore) GetAlias(ctx context.Context, from string) (*model.Alias, error) {
+	var alias model.Alias
+	if err := r.getJSON(ctx, "/api/v1/aliases/"+url.PathEscape(from), nil, &alias); err != nil {
+		return nil, err
+	}
+	if alias.From == "" {
+		return nil, nil
+	}
+	return &alias, nil
+}
+
 func (r *RemoteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	var aliases []model.Alias
 	if err := r.getJSON(ctx, "/api/v1/aliases", nil, &aliases); err != nil {
