@@ -68,7 +68,7 @@ $ dp alias search_files Grep
 
 🧠 **Smart Suggestions** — Levenshtein-powered similarity engine finds the real tool name behind every hallucination. CamelCase and underscore-aware.
 
-🔗 **[Alias System](docs/book/src/concepts/aliases.md)** — Map hallucinated names to real tools (`search_files` → `Grep`). Aliases show up in `dp paths` and `dp suggest` output so every query connects the dots. Upsert on write — re-alias anytime, no duplicates.
+🔗 **[Alias System](https://scbrown.github.io/desire-path/concepts/aliases.html)** — Map hallucinated names to real tools (`search_files` → `Grep`). Aliases show up in `dp paths` and `dp suggest` output so every query connects the dots. Upsert on write — re-alias anytime, no duplicates.
 
 🔌 **Plugin Architecture** — Extensible source plugins. Claude Code ships built-in. Write your own in ~50 lines of Go.
 
@@ -76,7 +76,7 @@ $ dp alias search_files Grep
 
 💾 **Zero-Config Storage** — Embedded SQLite, pure Go, no CGo. Just works. Single file at `~/.dp/desires.db`.
 
-📤 **[Export Anything](docs/book/src/commands/export.md)** — Dump raw data as JSONL or CSV. Pipe through `jq` for ad-hoc analysis, feed into dashboards, or back up with `dp export > backup.jsonl`. Supports filtering by date and data type (failures vs all invocations).
+📤 **[Export Anything](https://scbrown.github.io/desire-path/commands/export.html)** — Dump raw data as JSONL or CSV. Pipe through `jq` for ad-hoc analysis, feed into dashboards, or back up with `dp export > backup.jsonl`. Supports filtering by date and data type (failures vs all invocations).
 
 🖥️ **Beautiful Output** — TTY-aware tables with bold headers. `--json` everywhere for scripting.
 
@@ -197,7 +197,7 @@ Hooks into Claude Code's `PostToolUseFailure` (and optionally `PostToolUse`) eve
 | Kiro CLI | Planned |
 | OpenCode | Planned |
 
-> 🔌 **Want to add your tool?** The plugin interface is ~50 lines of Go. See [Writing a Source Plugin](docs/book/src/integrations/writing-plugins.md).
+> 🔌 **Want to add your tool?** The plugin interface is ~50 lines of Go. See [Writing a Source Plugin](https://scbrown.github.io/desire-path/integrations/writing-plugins.html).
 
 ---
 
@@ -241,20 +241,20 @@ dp config default_format json
 dp config known_tools Read,Write,Edit,Bash,Glob,Grep,MyCustomTool
 ```
 
-Config lives at `~/.dp/config.toml`. See the [Configuration Reference](docs/book/src/configuration.md) for all options.
+Config lives at `~/.dp/config.toml`. See the [Configuration Reference](https://scbrown.github.io/desire-path/configuration.html) for all options.
 
 ---
 
 ## 📖 Documentation
 
-Full documentation is available in the [docs](docs/book/src/SUMMARY.md):
+Full documentation available at **[scbrown.github.io/desire-path](https://scbrown.github.io/desire-path/)**:
 
-- **[Introduction](docs/book/src/introduction.md)** — The what and why
-- **[Getting Started](docs/book/src/getting-started.md)** — Zero to insights in 5 minutes
-- **[Concepts](docs/book/src/concepts/README.md)** — Desires, paths, aliases, invocations
-- **[Command Reference](docs/book/src/commands/README.md)** — Every command, every flag
-- **[Integrations](docs/book/src/integrations/README.md)** — Claude Code setup, plugin authoring
-- **[Architecture](docs/book/src/architecture.md)** — Data model, storage, plugin system
+- **[Introduction](https://scbrown.github.io/desire-path/introduction.html)** — The what and why
+- **[Getting Started](https://scbrown.github.io/desire-path/getting-started.html)** — Zero to insights in 5 minutes
+- **[Concepts](https://scbrown.github.io/desire-path/concepts/index.html)** — Desires, paths, aliases, invocations
+- **[Command Reference](https://scbrown.github.io/desire-path/commands/index.html)** — Every command, every flag
+- **[Integrations](https://scbrown.github.io/desire-path/integrations/index.html)** — Claude Code setup, plugin authoring
+- **[Architecture](https://scbrown.github.io/desire-path/architecture.html)** — Data model, storage, plugin system
 
 ```bash
 # Build the docs locally (requires mdbook)
