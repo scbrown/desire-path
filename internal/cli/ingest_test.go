@@ -1,0 +1,225 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/scbrown/desire-path/internal/config"
+	"github.com/scbrown/desire-path/internal/store"
+)
+
+// pipeStdin replaces os.Stdin with a pipe fed by data.
+// The caller must restore os.Stdin (typically via defer).
+func pipeStdin(t *testing.T, data string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdin = r
+	go func() {
+		defer w.Close()
+		w.WriteString(data)
+	}()
+}
+
+func TestIngestSkipsUnlistedTools(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+	dbFile := filepath.Join(tmpDir, "test.db")
+
+	// Allowlist permits Bash and Write only — "Read" should be skipped.
+	cfg := &config.Config{TrackTools: []string{"Bash", "Write"}}
+	if err := cfg.SaveTo(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	oldCfg, oldDB, oldJSON, oldStdin := configPath, dbPath, jsonOutput, os.Stdin
+	configPath = cfgPath
+	dbPath = dbFile
+	jsonOutput = true
+	defer func() {
+		configPath = oldCfg
+		dbPath = oldDB
+		jsonOutput = oldJSON
+		os.Stdin = oldStdin
+	}()
+
+	// Claude Code payload with tool_name "Read" (NOT in allowlist).
+	pipeStdin(t, `{"tool_name":"Read","session_id":"s1","cwd":"/tmp"}`)
+
+	// Capture stdout to verify silence.
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"ingest", "--source", "claude-code"})
+	err := rootCmd.Execute()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	if err != nil {
+		t.Fatalf("expected nil error (silent skip), got: %v", err)
+	}
+	if strings.TrimSpace(buf.String()) != "" {
+		t.Errorf("expected no output for skipped tool, got: %s", buf.String())
+	}
+
+	// Database should not have been created — command returned before opening it.
+	if _, statErr := os.Stat(dbFile); statErr == nil {
+		t.Error("database should not have been created for skipped tool")
+	}
+}
+
+func TestIngestRecordsListedTools(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+	dbFile := filepath.Join(tmpDir, "test.db")
+
+	// Allowlist includes "Read".
+	cfg := &config.Config{TrackTools: []string{"Read", "Bash"}}
+	if err := cfg.SaveTo(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	oldCfg, oldDB, oldJSON, oldStdin := configPath, dbPath, jsonOutput, os.Stdin
+	configPath = cfgPath
+	dbPath = dbFile
+	jsonOutput = false
+	defer func() {
+		configPath = oldCfg
+		dbPath = oldDB
+		jsonOutput = oldJSON
+		os.Stdin = oldStdin
+	}()
+
+	pipeStdin(t, `{"tool_name":"Read","session_id":"s2","cwd":"/tmp"}`)
+
+	rootCmd.SetArgs([]string{"ingest", "--source", "claude-code"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify invocation was persisted.
+	s, err := store.New(dbFile)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer s.Close()
+
+	invs, err := s.ListInvocations(context.Background(), store.InvocationOpts{})
+	if err != nil {
+		t.Fatalf("list invocations: %v", err)
+	}
+	if len(invs) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(invs))
+	}
+	if invs[0].ToolName != "Read" {
+		t.Errorf("tool_name: got %q, want %q", invs[0].ToolName, "Read")
+	}
+}
+
+func TestIngestEmptyAllowlistTracksEverything(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+	dbFile := filepath.Join(tmpDir, "test.db")
+
+	// No TrackTools — everything should be recorded.
+	cfg := &config.Config{}
+	if err := cfg.SaveTo(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	oldCfg, oldDB, oldJSON, oldStdin := configPath, dbPath, jsonOutput, os.Stdin
+	configPath = cfgPath
+	dbPath = dbFile
+	jsonOutput = false
+	defer func() {
+		configPath = oldCfg
+		dbPath = oldDB
+		jsonOutput = oldJSON
+		os.Stdin = oldStdin
+	}()
+
+	pipeStdin(t, `{"tool_name":"AnyTool","session_id":"s3","cwd":"/tmp"}`)
+
+	rootCmd.SetArgs([]string{"ingest", "--source", "claude-code"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	s, err := store.New(dbFile)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer s.Close()
+
+	invs, err := s.ListInvocations(context.Background(), store.InvocationOpts{})
+	if err != nil {
+		t.Fatalf("list invocations: %v", err)
+	}
+	if len(invs) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(invs))
+	}
+	if invs[0].ToolName != "AnyTool" {
+		t.Errorf("tool_name: got %q, want %q", invs[0].ToolName, "AnyTool")
+	}
+}
+
+func TestRecordUnaffectedByAllowlist(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+	dbFile := filepath.Join(tmpDir, "test.db")
+
+	// Allowlist restricts ingest to Read and Bash only.
+	// "Write" is NOT in the allowlist, but dp record should still work.
+	cfg := &config.Config{TrackTools: []string{"Read", "Bash"}}
+	if err := cfg.SaveTo(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	oldCfg, oldDB, oldJSON, oldStdin := configPath, dbPath, jsonOutput, os.Stdin
+	configPath = cfgPath
+	dbPath = dbFile
+	jsonOutput = false
+	defer func() {
+		configPath = oldCfg
+		dbPath = oldDB
+		jsonOutput = oldJSON
+		os.Stdin = oldStdin
+	}()
+
+	// Desire for tool "Write" — not in the ingest allowlist but should
+	// still be recorded via dp record.
+	pipeStdin(t, `{"tool_name":"Write","error":"unknown tool"}`)
+
+	rootCmd.SetArgs([]string{"record"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	s, err := store.New(dbFile)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer s.Close()
+
+	desires, err := s.ListDesires(context.Background(), store.ListOpts{})
+	if err != nil {
+		t.Fatalf("list desires: %v", err)
+	}
+	if len(desires) != 1 {
+		t.Fatalf("expected 1 desire, got %d", len(desires))
+	}
+	if desires[0].ToolName != "Write" {
+		t.Errorf("tool_name: got %q, want %q", desires[0].ToolName, "Write")
+	}
+}
