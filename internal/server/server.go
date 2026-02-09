@@ -6,10 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/scbrown/desire-path/internal/ingest"
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/store"
 )
@@ -29,6 +31,7 @@ func New(s store.Store) *Server {
 }
 
 func (s *Server) routes() {
+	s.mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
 	s.mux.HandleFunc("POST /api/v1/desires", s.handleRecordDesire)
 	s.mux.HandleFunc("GET /api/v1/desires", s.handleListDesires)
 	s.mux.HandleFunc("GET /api/v1/paths", s.handleGetPaths)
@@ -74,6 +77,25 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	sourceName := r.URL.Query().Get("source")
+	if sourceName == "" {
+		writeErr(w, http.StatusBadRequest, "source query parameter is required")
+		return
+	}
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "reading request body: %v", err)
+		return
+	}
+	inv, err := ingest.Ingest(r.Context(), s.store, raw, sourceName)
+	if err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, "ingest: %v", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, inv)
 }
 
 func (s *Server) handleRecordDesire(w http.ResponseWriter, r *http.Request) {

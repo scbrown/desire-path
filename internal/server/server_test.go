@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/scbrown/desire-path/internal/model"
+	_ "github.com/scbrown/desire-path/internal/source" // register source plugins
 	"github.com/scbrown/desire-path/internal/store"
 )
 
@@ -317,6 +318,113 @@ func TestListDesiresWithFilters(t *testing.T) {
 	}
 	if desires[0].Source != "s1" {
 		t.Errorf("source = %q, want s1", desires[0].Source)
+	}
+}
+
+func TestIngest(t *testing.T) {
+	_, ts := testServer(t)
+
+	// Send a Claude Code hook payload through the ingest endpoint.
+	payload := `{"tool_name":"Read","session_id":"s-123","cwd":"/tmp","error":"unknown tool"}`
+	resp, err := http.Post(ts.URL+"/api/v1/ingest?source=claude-code", "application/json", bytes.NewBufferString(payload))
+	if err != nil {
+		t.Fatalf("POST ingest: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var inv model.Invocation
+	if err := json.NewDecoder(resp.Body).Decode(&inv); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if inv.ToolName != "Read" {
+		t.Errorf("tool_name = %q, want Read", inv.ToolName)
+	}
+	if inv.Source != "claude-code" {
+		t.Errorf("source = %q, want claude-code", inv.Source)
+	}
+	if !inv.IsError {
+		t.Error("expected IsError=true for payload with error field")
+	}
+
+	// The ingest pipeline should also have created a desire for the error.
+	dresp, err := http.Get(ts.URL + "/api/v1/desires")
+	if err != nil {
+		t.Fatalf("GET desires: %v", err)
+	}
+	defer dresp.Body.Close()
+	var desires []model.Desire
+	if err := json.NewDecoder(dresp.Body).Decode(&desires); err != nil {
+		t.Fatalf("decode desires: %v", err)
+	}
+	if len(desires) != 1 {
+		t.Fatalf("got %d desires, want 1 (ingest should create desire for errors)", len(desires))
+	}
+	if desires[0].ToolName != "Read" {
+		t.Errorf("desire tool_name = %q, want Read", desires[0].ToolName)
+	}
+}
+
+func TestIngestMissingSource(t *testing.T) {
+	_, ts := testServer(t)
+
+	resp, err := http.Post(ts.URL+"/api/v1/ingest", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatalf("POST ingest: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestIngestUnknownSource(t *testing.T) {
+	_, ts := testServer(t)
+
+	resp, err := http.Post(ts.URL+"/api/v1/ingest?source=nonexistent", "application/json", bytes.NewBufferString(`{"tool_name":"X"}`))
+	if err != nil {
+		t.Fatalf("POST ingest: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestIngestSuccessNoDesire(t *testing.T) {
+	_, ts := testServer(t)
+
+	// A successful tool call (no error) should create invocation but NOT desire.
+	payload := `{"tool_name":"Read","session_id":"s-456","cwd":"/tmp"}`
+	resp, err := http.Post(ts.URL+"/api/v1/ingest?source=claude-code", "application/json", bytes.NewBufferString(payload))
+	if err != nil {
+		t.Fatalf("POST ingest: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var inv model.Invocation
+	if err := json.NewDecoder(resp.Body).Decode(&inv); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if inv.IsError {
+		t.Error("expected IsError=false for payload without error")
+	}
+
+	// No desire should be created for a success.
+	dresp, err := http.Get(ts.URL + "/api/v1/desires")
+	if err != nil {
+		t.Fatalf("GET desires: %v", err)
+	}
+	defer dresp.Body.Close()
+	var desires []model.Desire
+	if err := json.NewDecoder(dresp.Body).Decode(&desires); err != nil {
+		t.Fatalf("decode desires: %v", err)
+	}
+	if len(desires) != 0 {
+		t.Fatalf("got %d desires, want 0 (success should not create desire)", len(desires))
 	}
 }
 
