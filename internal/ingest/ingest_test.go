@@ -29,10 +29,12 @@ func (f *fakeSource) Extract([]byte) (*source.Fields, error) {
 	return f.fields, nil
 }
 
-// fakeStore records calls to RecordInvocation for test inspection.
+// fakeStore records calls to RecordInvocation and RecordDesire for test inspection.
 type fakeStore struct {
-	recorded []model.Invocation
-	err      error
+	recorded      []model.Invocation
+	desires       []model.Desire
+	err           error
+	desireErr     error
 }
 
 func (f *fakeStore) RecordInvocation(_ context.Context, inv model.Invocation) error {
@@ -43,7 +45,13 @@ func (f *fakeStore) RecordInvocation(_ context.Context, inv model.Invocation) er
 	return nil
 }
 
-func (f *fakeStore) RecordDesire(context.Context, model.Desire) error              { return nil }
+func (f *fakeStore) RecordDesire(_ context.Context, d model.Desire) error {
+	if f.desireErr != nil {
+		return f.desireErr
+	}
+	f.desires = append(f.desires, d)
+	return nil
+}
 func (f *fakeStore) ListDesires(context.Context, store.ListOpts) ([]model.Desire, error) {
 	return nil, nil
 }
@@ -402,5 +410,116 @@ func TestIngestReturnedValueMatchesStored(t *testing.T) {
 	}
 	if !inv.Timestamp.Equal(stored.Timestamp) {
 		t.Errorf("returned Timestamp %v != stored Timestamp %v", inv.Timestamp, stored.Timestamp)
+	}
+}
+
+func TestIngestDualWriteOnError(t *testing.T) {
+	srcName := "test-dualwrite-error"
+	registerTestSource(t, srcName, &source.Fields{
+		ToolName:   "Bash",
+		InstanceID: "sess-abc",
+		ToolInput:  json.RawMessage(`{"command":"rm -rf /"}`),
+		CWD:        "/home/user",
+		Error:      "permission denied",
+		Extra: map[string]json.RawMessage{
+			"hook_event_name": json.RawMessage(`"PostToolUseFailure"`),
+		},
+	}, nil)
+
+	fs := &fakeStore{}
+	inv, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Invocation should be recorded.
+	if len(fs.recorded) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(fs.recorded))
+	}
+
+	// Desire should also be recorded (dual-write).
+	if len(fs.desires) != 1 {
+		t.Fatalf("expected 1 desire, got %d", len(fs.desires))
+	}
+
+	d := fs.desires[0]
+
+	// Desire should have its own UUID, distinct from the invocation.
+	if d.ID == "" {
+		t.Error("desire ID should be auto-generated")
+	}
+	if d.ID == inv.ID {
+		t.Error("desire ID should differ from invocation ID")
+	}
+
+	// Fields should map correctly.
+	if d.ToolName != "Bash" {
+		t.Errorf("desire ToolName = %q, want %q", d.ToolName, "Bash")
+	}
+	if d.Error != "permission denied" {
+		t.Errorf("desire Error = %q, want %q", d.Error, "permission denied")
+	}
+	if d.Source != srcName {
+		t.Errorf("desire Source = %q, want %q", d.Source, srcName)
+	}
+	if d.SessionID != "sess-abc" {
+		t.Errorf("desire SessionID = %q, want %q", d.SessionID, "sess-abc")
+	}
+	if d.CWD != "/home/user" {
+		t.Errorf("desire CWD = %q, want %q", d.CWD, "/home/user")
+	}
+	if string(d.ToolInput) != `{"command":"rm -rf /"}` {
+		t.Errorf("desire ToolInput = %s, want %s", d.ToolInput, `{"command":"rm -rf /"}`)
+	}
+
+	// Timestamp should match the invocation.
+	if !d.Timestamp.Equal(inv.Timestamp) {
+		t.Errorf("desire Timestamp %v != invocation Timestamp %v", d.Timestamp, inv.Timestamp)
+	}
+
+	// Metadata should be populated from Extra.
+	if d.Metadata == nil {
+		t.Fatal("desire Metadata should not be nil when Extra fields exist")
+	}
+}
+
+func TestIngestNoDualWriteOnSuccess(t *testing.T) {
+	srcName := "test-dualwrite-success"
+	registerTestSource(t, srcName, &source.Fields{
+		ToolName: "Read",
+		CWD:      "/tmp",
+	}, nil)
+
+	fs := &fakeStore{}
+	_, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Invocation should be recorded.
+	if len(fs.recorded) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(fs.recorded))
+	}
+
+	// Desire should NOT be recorded for successful invocations.
+	if len(fs.desires) != 0 {
+		t.Errorf("expected 0 desires for success, got %d", len(fs.desires))
+	}
+}
+
+func TestIngestDualWriteDesireStoreError(t *testing.T) {
+	srcName := "test-dualwrite-desire-err"
+	registerTestSource(t, srcName, &source.Fields{
+		ToolName: "Bash",
+		Error:    "tool failed",
+	}, nil)
+
+	fs := &fakeStore{desireErr: fmt.Errorf("desire table full")}
+	_, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
+	if err == nil {
+		t.Fatal("expected error when RecordDesire fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "storing desire") {
+		t.Errorf("error %q should contain 'storing desire'", err.Error())
 	}
 }

@@ -37,8 +37,9 @@ func Ingest(ctx context.Context, s store.Store, raw []byte, sourceName string) (
 }
 
 // IngestFields converts pre-extracted Fields into an Invocation and persists
-// it via the store. This is useful when the caller has already called
-// source.Extract (e.g., to inspect the tool name before deciding to ingest).
+// it via the store. When the invocation is an error, a Desire is also written
+// so failures appear in both reporting views (dp list/paths/stats for desires,
+// dp export --type invocations for the full picture).
 func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sourceName string) (model.Invocation, error) {
 	inv, err := toInvocation(fields, sourceName)
 	if err != nil {
@@ -49,7 +50,30 @@ func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sou
 		return model.Invocation{}, fmt.Errorf("storing invocation: %w", err)
 	}
 
+	if inv.IsError {
+		d := toDesire(fields, sourceName, inv.Timestamp, inv.Metadata)
+		if err := s.RecordDesire(ctx, d); err != nil {
+			return model.Invocation{}, fmt.Errorf("storing desire: %w", err)
+		}
+	}
+
 	return inv, nil
+}
+
+// toDesire converts source.Fields into a model.Desire, reusing the timestamp
+// and pre-marshaled metadata from the companion invocation for consistency.
+func toDesire(f *source.Fields, sourceName string, ts time.Time, metadata json.RawMessage) model.Desire {
+	return model.Desire{
+		ID:        uuid.New().String(),
+		ToolName:  f.ToolName,
+		ToolInput: f.ToolInput,
+		Error:     f.Error,
+		Source:    sourceName,
+		SessionID: f.InstanceID,
+		CWD:       f.CWD,
+		Timestamp: ts,
+		Metadata:  metadata,
+	}
 }
 
 // toInvocation converts source.Fields into a model.Invocation, generating
