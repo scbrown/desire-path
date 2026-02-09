@@ -178,6 +178,45 @@ func TestAliases(t *testing.T) {
 	}
 }
 
+func TestGetAlias(t *testing.T) {
+	_, ts := testServer(t)
+
+	// Get nonexistent alias.
+	resp, err := http.Get(ts.URL + "/api/v1/aliases/nonexistent")
+	if err != nil {
+		t.Fatalf("GET alias: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+
+	// Set alias.
+	body, _ := json.Marshal(map[string]string{"from": "read_file", "to": "Read"})
+	resp, err = http.Post(ts.URL+"/api/v1/aliases", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST alias: %v", err)
+	}
+	resp.Body.Close()
+
+	// Get existing alias.
+	resp, err = http.Get(ts.URL + "/api/v1/aliases/read_file")
+	if err != nil {
+		t.Fatalf("GET alias: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var alias model.Alias
+	if err := json.NewDecoder(resp.Body).Decode(&alias); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if alias.From != "read_file" || alias.To != "Read" {
+		t.Errorf("alias = %+v, want read_file → Read", alias)
+	}
+}
+
 func TestStats(t *testing.T) {
 	_, ts := testServer(t)
 

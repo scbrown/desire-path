@@ -4,14 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/scbrown/desire-path/internal/model"
+)
+
+const (
+	defaultTimeout    = 30 * time.Second
+	maxRetries        = 3
+	retryBaseInterval = 100 * time.Millisecond
 )
 
 // RemoteStore implements Store by forwarding requests over HTTP to a dp serve instance.
@@ -25,9 +33,30 @@ func NewRemote(baseURL string) *RemoteStore {
 	return &RemoteStore{
 		baseURL: baseURL,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: defaultTimeout,
 		},
 	}
+}
+
+// isRetryable returns true for transient errors worth retrying.
+func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr)
+}
+
+// isRetryableStatus returns true for HTTP status codes worth retrying.
+func isRetryableStatus(code int) bool {
+	return code == http.StatusTooManyRequests ||
+		code == http.StatusBadGateway ||
+		code == http.StatusServiceUnavailable ||
+		code == http.StatusGatewayTimeout
 }
 
 func (r *RemoteStore) RecordDesire(ctx context.Context, d model.Desire) error {
@@ -76,14 +105,48 @@ func (r *RemoteStore) SetAlias(ctx context.Context, from, to string) error {
 }
 
 func (r *RemoteStore) GetAlias(ctx context.Context, from string) (*model.Alias, error) {
-	var alias model.Alias
-	if err := r.getJSON(ctx, "/api/v1/aliases/"+url.PathEscape(from), nil, &alias); err != nil {
-		return nil, err
+	u := r.baseURL + "/api/v1/aliases/" + url.PathEscape(from)
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			delay := retryBaseInterval * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		var resp *http.Response
+		resp, lastErr = r.client.Do(req)
+		if lastErr != nil {
+			if isRetryable(lastErr) {
+				continue
+			}
+			return nil, fmt.Errorf("remote get alias: %w", lastErr)
+		}
+		defer resp.Body.Close()
+		if isRetryableStatus(resp.StatusCode) {
+			lastErr = remoteError(resp)
+			continue
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, remoteError(resp)
+		}
+		var alias model.Alias
+		if err := json.NewDecoder(resp.Body).Decode(&alias); err != nil {
+			return nil, fmt.Errorf("decoding response: %w", err)
+		}
+		return &alias, nil
 	}
-	if alias.From == "" {
-		return nil, nil
-	}
-	return &alias, nil
+	return nil, fmt.Errorf("remote get alias (after %d retries): %w", maxRetries, lastErr)
 }
 
 func (r *RemoteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
@@ -96,22 +159,42 @@ func (r *RemoteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 
 func (r *RemoteStore) DeleteAlias(ctx context.Context, from string) (bool, error) {
 	u := r.baseURL + "/api/v1/aliases/" + url.PathEscape(from)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
-	if err != nil {
-		return false, fmt.Errorf("creating request: %w", err)
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			delay := retryBaseInterval * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+		if err != nil {
+			return false, fmt.Errorf("creating request: %w", err)
+		}
+		var resp *http.Response
+		resp, lastErr = r.client.Do(req)
+		if lastErr != nil {
+			if isRetryable(lastErr) {
+				continue
+			}
+			return false, fmt.Errorf("remote delete alias: %w", lastErr)
+		}
+		defer resp.Body.Close()
+		if isRetryableStatus(resp.StatusCode) {
+			lastErr = remoteError(resp)
+			continue
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return false, nil
+		}
+		if resp.StatusCode != http.StatusOK {
+			return false, remoteError(resp)
+		}
+		return true, nil
 	}
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("remote delete alias: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return false, nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		return false, remoteError(resp)
-	}
-	return true, nil
+	return false, fmt.Errorf("remote delete alias (after %d retries): %w", maxRetries, lastErr)
 }
 
 func (r *RemoteStore) Stats(ctx context.Context) (Stats, error) {
@@ -183,57 +266,99 @@ func (r *RemoteStore) Close() error {
 }
 
 // getJSON performs a GET request and decodes the JSON response into dst.
+// Transient network errors and 5xx responses are retried with exponential backoff.
 func (r *RemoteStore) getJSON(ctx context.Context, path string, query url.Values, dst any) error {
 	u := r.baseURL + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			delay := retryBaseInterval * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		var resp *http.Response
+		resp, lastErr = r.client.Do(req)
+		if lastErr != nil {
+			if isRetryable(lastErr) {
+				continue
+			}
+			return fmt.Errorf("remote request: %w", lastErr)
+		}
+		defer resp.Body.Close()
+		if isRetryableStatus(resp.StatusCode) {
+			lastErr = remoteError(resp)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return remoteError(resp)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+			return fmt.Errorf("decoding response: %w", err)
+		}
+		return nil
 	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("remote request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return remoteError(resp)
-	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-		return fmt.Errorf("decoding response: %w", err)
-	}
-	return nil
+	return fmt.Errorf("remote request (after %d retries): %w", maxRetries, lastErr)
 }
 
 // postJSON performs a POST request with a JSON body and optionally decodes the response.
+// Transient network errors and 5xx responses are retried with exponential backoff.
 func (r *RemoteStore) postJSON(ctx context.Context, path string, body any, dst any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshaling request: %w", err)
 	}
 	u := r.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("remote request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return remoteError(resp)
-	}
-	if dst != nil {
-		if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-			return fmt.Errorf("decoding response: %w", err)
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			delay := retryBaseInterval * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
 		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		var resp *http.Response
+		resp, lastErr = r.client.Do(req)
+		if lastErr != nil {
+			if isRetryable(lastErr) {
+				continue
+			}
+			return fmt.Errorf("remote request: %w", lastErr)
+		}
+		defer resp.Body.Close()
+		if isRetryableStatus(resp.StatusCode) {
+			lastErr = remoteError(resp)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+			return remoteError(resp)
+		}
+		if dst != nil {
+			if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+				return fmt.Errorf("decoding response: %w", err)
+			}
+		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("remote request (after %d retries): %w", maxRetries, lastErr)
 }
 
 // remoteError reads an error response from the server and returns it as an error.

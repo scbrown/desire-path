@@ -95,6 +95,21 @@ func registerRoutes(mux *http.ServeMux, s Store) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(aliases)
 	})
+	mux.HandleFunc("GET /api/v1/aliases/{from}", func(w http.ResponseWriter, r *http.Request) {
+		from := r.PathValue("from")
+		alias, err := s.GetAlias(r.Context(), from)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if alias == nil {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+			return
+		}
+		json.NewEncoder(w).Encode(alias)
+	})
 	mux.HandleFunc("DELETE /api/v1/aliases/{from}", func(w http.ResponseWriter, r *http.Request) {
 		from := r.PathValue("from")
 		deleted, err := s.DeleteAlias(r.Context(), from)
@@ -260,6 +275,62 @@ func TestRemoteAliases(t *testing.T) {
 	}
 	if deleted {
 		t.Error("expected deleted=false for nonexistent")
+	}
+}
+
+func TestRemoteGetAlias(t *testing.T) {
+	remote := testRemote(t)
+	ctx := context.Background()
+
+	// Get nonexistent.
+	alias, err := remote.GetAlias(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("get nonexistent: %v", err)
+	}
+	if alias != nil {
+		t.Errorf("expected nil for nonexistent alias, got %+v", alias)
+	}
+
+	// Set then get.
+	if err := remote.SetAlias(ctx, "read_file", "Read"); err != nil {
+		t.Fatalf("set alias: %v", err)
+	}
+	alias, err = remote.GetAlias(ctx, "read_file")
+	if err != nil {
+		t.Fatalf("get alias: %v", err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.From != "read_file" || alias.To != "Read" {
+		t.Errorf("alias = %+v, want read_file → Read", alias)
+	}
+}
+
+func TestRemoteRetryOnServerError(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": "temporarily unavailable"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]model.Desire{})
+	}))
+	t.Cleanup(ts.Close)
+
+	remote := NewRemote(ts.URL)
+	desires, err := remote.ListDesires(context.Background(), ListOpts{})
+	if err != nil {
+		t.Fatalf("expected success after retries, got: %v", err)
+	}
+	if len(desires) != 0 {
+		t.Errorf("got %d desires, want 0", len(desires))
+	}
+	if attempts != 3 {
+		t.Errorf("expected 3 attempts, got %d", attempts)
 	}
 }
 

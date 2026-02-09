@@ -37,6 +37,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/paths", s.handleGetPaths)
 	s.mux.HandleFunc("POST /api/v1/aliases", s.handleSetAlias)
 	s.mux.HandleFunc("GET /api/v1/aliases", s.handleGetAliases)
+	s.mux.HandleFunc("GET /api/v1/aliases/{from}", s.handleGetAlias)
 	s.mux.HandleFunc("DELETE /api/v1/aliases/{from}", s.handleDeleteAlias)
 	s.mux.HandleFunc("GET /api/v1/stats", s.handleStats)
 	s.mux.HandleFunc("GET /api/v1/inspect", s.handleInspectPath)
@@ -180,6 +181,24 @@ func (s *Server) handleGetAliases(w http.ResponseWriter, r *http.Request) {
 		aliases = []model.Alias{}
 	}
 	writeJSON(w, http.StatusOK, aliases)
+}
+
+func (s *Server) handleGetAlias(w http.ResponseWriter, r *http.Request) {
+	from := r.PathValue("from")
+	if from == "" {
+		writeErr(w, http.StatusBadRequest, "alias name is required")
+		return
+	}
+	alias, err := s.store.GetAlias(r.Context(), from)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "getting alias: %v", err)
+		return
+	}
+	if alias == nil {
+		writeErr(w, http.StatusNotFound, "alias %q not found", from)
+		return
+	}
+	writeJSON(w, http.StatusOK, alias)
 }
 
 func (s *Server) handleDeleteAlias(w http.ResponseWriter, r *http.Request) {
