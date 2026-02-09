@@ -247,8 +247,8 @@ func TestClaudeCodeInstall(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 hook entry, got %d", len(entries))
 	}
-	if entries[0].Hooks[0].Command != dpHookCommand {
-		t.Errorf("command = %q, want %q", entries[0].Hooks[0].Command, dpHookCommand)
+	if entries[0].Hooks[0].Command != dpIngestCommand {
+		t.Errorf("command = %q, want %q", entries[0].Hooks[0].Command, dpIngestCommand)
 	}
 }
 
@@ -379,8 +379,8 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 		t.Errorf("first entry command = %q, want %q", entries[0].Hooks[0].Command, "other-tool record")
 	}
 	// dp hook should be second.
-	if entries[1].Hooks[0].Command != dpHookCommand {
-		t.Errorf("second entry command = %q, want %q", entries[1].Hooks[0].Command, dpHookCommand)
+	if entries[1].Hooks[0].Command != dpIngestCommand {
+		t.Errorf("second entry command = %q, want %q", entries[1].Hooks[0].Command, dpIngestCommand)
 	}
 }
 

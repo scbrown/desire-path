@@ -98,9 +98,8 @@ func (c *claudeCode) Extract(raw []byte) (*Fields, error) {
 }
 
 // Install configures Claude Code hooks. By default it installs the
-// PostToolUseFailure → dp record hook. When opts.TrackAll is true, it
-// additionally installs dp ingest on PostToolUse and PostToolUseFailure
-// to record all invocations.
+// PostToolUseFailure → dp ingest hook. When opts.TrackAll is true, it
+// additionally installs dp ingest on PostToolUse to record all invocations.
 func (c *claudeCode) Install(opts InstallOpts) error {
 	settingsPath := opts.SettingsPath
 	if settingsPath == "" {
@@ -174,25 +173,26 @@ type claudeHookInner struct {
 	Timeout int    `json:"timeout"`
 }
 
-// dpHookCommand is the command dp installs for PostToolUseFailure.
+// dpHookCommand is the legacy command previously installed for PostToolUseFailure.
+// Kept for IsInstalled detection of existing installations.
 const dpHookCommand = "dp record --source claude-code"
 
-// dpIngestCommand is the command for recording all invocations.
+// dpIngestCommand is the command installed for all hook events.
 const dpIngestCommand = "dp ingest --source claude-code"
 
-// setupClaudeCodeAt installs the PostToolUseFailure → dp record hook.
+// setupClaudeCodeAt installs the PostToolUseFailure → dp ingest hook.
 func setupClaudeCodeAt(settingsPath string) error {
 	return installClaudeHooks(settingsPath, false)
 }
 
-// setupClaudeCodeWithIngest installs all hooks including PostToolUse → dp ingest.
+// setupClaudeCodeWithIngest installs dp ingest on both PostToolUse and PostToolUseFailure.
 func setupClaudeCodeWithIngest(settingsPath string) error {
 	return installClaudeHooks(settingsPath, true)
 }
 
 // installClaudeHooks performs the Claude Code setup using the given settings path.
-// When trackAll is true, it additionally installs dp ingest hooks on PostToolUse
-// and PostToolUseFailure to record all invocations (not just failures).
+// It always installs dp ingest on PostToolUseFailure. When trackAll is true,
+// it additionally installs dp ingest on PostToolUse.
 func installClaudeHooks(settingsPath string, trackAll bool) error {
 	settings, err := readClaudeSettings(settingsPath)
 	if err != nil {
@@ -204,12 +204,11 @@ func installClaudeHooks(settingsPath string, trackAll bool) error {
 		command string
 	}
 	defs := []hookDef{
-		{"PostToolUseFailure", dpHookCommand},
+		{"PostToolUseFailure", dpIngestCommand},
 	}
 	if trackAll {
 		defs = append(defs,
 			hookDef{"PostToolUse", dpIngestCommand},
-			hookDef{"PostToolUseFailure", dpIngestCommand},
 		)
 	}
 
