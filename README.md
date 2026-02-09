@@ -4,9 +4,9 @@
      ╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸
 
         ┏━━━┓
-        ┃ ╱ ┃   ┏┳┓┏━╸┏━┓╻┏━┓┏━╸   ┏━┓┏━┓╺┳╸╻ ╻
-        ┃╱  ┃   ┃┃┃┣╸ ┗━┓┃┣┳┛┣╸    ┣━┛┣━┫ ┃ ┣━┫
-        ┗━━━┛   ╹╺┛┗━╸┗━┛╹╹┗╸┗━╸   ╹  ╹ ╹ ╹ ╹ ╹
+        ┃ ╱ ┃   ┏━┓┏━╸┏━┓╻┏━┓┏━╸   ┏━┓┏━┓╺┳╸╻ ╻
+        ┃╱  ┃   ┃ ┃┣╸ ┗━┓┃┣┳┛┣╸    ┣━┛┣━┫ ┃ ┣━┫
+        ┗━━━┛   ┗━┛┗━╸┗━┛╹╹┗╸┗━╸   ╹  ╹ ╹ ╹ ╹ ╹
 
       <i>Where the AI walks, the sidewalk should follow.</i>
 
@@ -16,7 +16,6 @@
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://goreportcard.com/report/github.com/scbrown/desire-path"><img src="https://goreportcard.com/badge/github.com/scbrown/desire-path" alt="Go Report Card"></a>
   <img src="https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white" alt="Go 1.24+">
   <img src="https://img.shields.io/badge/SQLite-embedded-003B57?logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/CGo-none-success" alt="No CGo">
@@ -25,11 +24,11 @@
 
 ---
 
-AI coding assistants hallucinate tool names. They call `read_file` when they mean `Read`. They try `run_tests` when `Bash` is right there. Every failed tool call is a **signal** — it reveals what the AI *expected* to work.
+Claude calls `Edit` with `file` instead of `file_path`. The tool rejects it. Claude retries with the right parameter, burning tokens and time. Tomorrow it makes the same mistake. Next week, 23 more times. Across your team, hundreds of wasted retries — all from the same mismatch.
 
-**`dp` captures those signals, finds the patterns, and helps you fix them.**
+**`dp` captures every failed tool call, surfaces the patterns, and shows you exactly what to fix — or what to build next.**
 
-Think of it like [desire paths](https://en.wikipedia.org/wiki/Desire_path) on a university campus — those worn trails through the grass where people actually walk. You don't fight the path. You pave it.
+Think of it like [desire paths](https://en.wikipedia.org/wiki/Desire_path) on a campus — worn trails through the grass where people actually walk. You don't fight the path. You pave it.
 
 ---
 
@@ -38,43 +37,36 @@ Think of it like [desire paths](https://en.wikipedia.org/wiki/Desire_path) on a 
 ```bash
 # 1. Hook into Claude Code (one-time setup)
 $ dp init --source claude-code
-✓ Configured Claude Code integration
-  Hook: PostToolUseFailure → dp record --source claude-code
+✓ Configured Claude Code hooks
+  PostToolUseFailure → dp record --source claude-code
 
-# 2. Use Claude Code normally... failures get recorded silently in the background
+# 2. Use Claude Code normally — failures get recorded in the background
 
-# 3. See what's been happening
-$ dp list --since 7d
-TIMESTAMP              SOURCE        TOOL              ERROR
-2026-02-08 14:23:01    claude-code   read_file         unknown tool "read_file"
-2026-02-08 14:25:33    claude-code   read_file         unknown tool "read_file"
-2026-02-08 15:01:12    claude-code   execute_command   unknown tool "execute_command"
-2026-02-07 09:44:55    claude-code   search_files      unknown tool "search_files"
-2026-02-07 09:45:02    claude-code   search_files      unknown tool "search_files"
-2026-02-06 11:30:18    claude-code   write_file        unknown tool "write_file"
-...
-
-# 4. Find the patterns — what's failing most?
+# 3. A week later: what's been happening?
 $ dp paths --top 5
-RANK  PATTERN            COUNT  FIRST_SEEN  LAST_SEEN   ALIAS
-1     read_file          47     2026-01-15  2026-02-08
-2     search_files       23     2026-01-18  2026-02-07
+RANK  PATTERN            COUNT  FIRST_SEEN  LAST_SEEN
+1     search_files       47     2026-01-15  2026-02-08
+2     Edit:file          23     2026-01-18  2026-02-07
 3     execute_command    18     2026-01-20  2026-02-08
 4     write_file         12     2026-01-22  2026-02-06
 5     list_directory      8     2026-02-01  2026-02-05
 
-# 5. What real tool does "read_file" look like?
-$ dp suggest read_file
-RANK  TOOL    SCORE
-1     Read    0.72
-2     Grep    0.41
+# 4. "search_files" keeps failing — what real tool is it closest to?
+$ dp suggest search_files
+CANDIDATE  SCORE
+Grep       0.82
+Glob       0.64
 
-# 6. Lock it in — map the hallucination to reality
-$ dp alias read_file Read
-✓ Alias set: read_file → Read
+# 5. Map the hallucination to the real tool
+$ dp alias search_files Grep
+✓ Alias: search_files → Grep
+
+# 6. Or better — 47 sessions tried "search_files". That's a feature request.
+#    Build an MCP tool called search_files that wraps Grep.
+#    dp just told you where to pour the concrete.
 ```
 
-> 💡 **47 failures from one hallucinated name.** Now you know exactly what to build — or alias — next.
+> **47 failures, one pattern, one fix.** The AI is telling you what the tool *should* have been called. That's a desire path.
 
 ---
 
