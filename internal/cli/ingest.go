@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/ingest"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
@@ -41,18 +42,43 @@ Use "dp ingest --source <name>" with data piped to stdin.`,
 			return fmt.Errorf("--source flag is required (available: %s)", strings.Join(names, ", "))
 		}
 
+		raw, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("reading stdin: %w", err)
+		}
+
+		// Extract fields first so we can check the tool name against the allowlist.
+		src := source.Get(ingestSource)
+		if src == nil {
+			return fmt.Errorf("unknown source: %q", ingestSource)
+		}
+		fields, err := src.Extract(raw)
+		if err != nil {
+			return fmt.Errorf("extracting fields: %w", err)
+		}
+
+		// Check track_tools allowlist: if non-empty and tool not listed, skip silently.
+		cfg, cfgErr := config.LoadFrom(configPath)
+		if cfgErr == nil && len(cfg.TrackTools) > 0 {
+			allowed := false
+			for _, t := range cfg.TrackTools {
+				if t == fields.ToolName {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return nil
+			}
+		}
+
 		s, err := store.New(dbPath)
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
 		defer s.Close()
 
-		raw, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("reading stdin: %w", err)
-		}
-
-		inv, err := ingest.Ingest(context.Background(), s, raw, ingestSource)
+		inv, err := ingest.IngestFields(context.Background(), s, fields, ingestSource)
 		if err != nil {
 			return err
 		}

@@ -33,6 +33,13 @@ func Ingest(ctx context.Context, s store.Store, raw []byte, sourceName string) (
 		return model.Invocation{}, fmt.Errorf("extracting fields: %w", err)
 	}
 
+	return IngestFields(ctx, s, fields, sourceName)
+}
+
+// IngestFields converts pre-extracted Fields into an Invocation and persists
+// it via the store. This is useful when the caller has already called
+// source.Extract (e.g., to inspect the tool name before deciding to ingest).
+func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sourceName string) (model.Invocation, error) {
 	inv, err := toInvocation(fields, sourceName)
 	if err != nil {
 		return model.Invocation{}, err
