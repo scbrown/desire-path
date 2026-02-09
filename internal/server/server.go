@@ -67,6 +67,11 @@ func (s *Server) Serve(ln net.Listener) error {
 	return s.srv.Serve(ln)
 }
 
+// Handler returns the HTTP handler for use with httptest.Server or custom listeners.
+func (s *Server) Handler() http.Handler {
+	return s.mux
+}
+
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.srv == nil {
