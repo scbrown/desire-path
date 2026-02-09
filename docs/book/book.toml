@@ -1,0 +1,13 @@
+[book]
+authors = ["Steve Brown"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Desire Path Documentation"
+description = "Track and analyze failed AI tool calls to build better developer tools"
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/scbrown/desire-path"
+edit-url-template = "https://github.com/scbrown/desire-path/edit/main/docs/book/src/{path}"
