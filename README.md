@@ -241,7 +241,7 @@ dp config default_format json
 dp config known_tools Read,Write,Edit,Bash,Glob,Grep,MyCustomTool
 ```
 
-Config lives at `~/.dp/config.json`. See the [Configuration Reference](docs/book/src/configuration.md) for all options.
+Config lives at `~/.dp/config.toml`. See the [Configuration Reference](docs/book/src/configuration.md) for all options.
 
 ---
 

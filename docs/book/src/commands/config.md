@@ -15,7 +15,7 @@ None
 ## Examples
 
     $ dp config
-    Configuration (from /home/user/.dp/config.json):
+    Configuration (from /home/user/.dp/config.toml):
 
     db_path: /home/user/.dp/desires.db
     default_source: claude-code
@@ -36,7 +36,7 @@ None
 
 ## Details
 
-The config command manages desire_path's persistent configuration. Configuration is stored in `~/.dp/config.json` and applies to all invocations unless overridden by flags.
+The config command manages desire_path's persistent configuration. Configuration is stored in `~/.dp/config.toml` and applies to all invocations unless overridden by flags.
 
 Valid configuration keys:
 
@@ -84,18 +84,16 @@ Configuration precedence (highest to lowest):
 2. Config file values
 3. Built-in defaults
 
-To reset a configuration value to its default, delete the key from `~/.dp/config.json` manually or set it to an empty string:
+To reset a configuration value to its default, delete the key from `~/.dp/config.toml` manually or set it to an empty string:
 
     $ dp config default_source ""
     Updated configuration: default_source = (unset)
 
-If the config file doesn't exist, it's created automatically on first write. The file is JSON formatted for easy manual editing:
+If the config file doesn't exist, it's created automatically on first write. The file is TOML formatted for easy manual editing:
 
-```json
-{
-  "db_path": "/home/user/.dp/desires.db",
-  "default_source": "claude-code",
-  "known_tools": "Read,Write,Edit,Bash,Glob,Grep,Task,WebFetch,WebSearch,NotebookEdit",
-  "default_format": "json"
-}
+```toml
+db_path = "/home/user/.dp/desires.db"
+default_source = "claude-code"
+known_tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Task", "WebFetch", "WebSearch", "NotebookEdit"]
+default_format = "json"
 ```

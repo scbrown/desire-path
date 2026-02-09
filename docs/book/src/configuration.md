@@ -1,15 +1,15 @@
 # Configuration
 
-dp stores configuration in `~/.dp/config.json`. You can view and update settings using the `dp config` command or by editing the file directly.
+dp stores configuration in `~/.dp/config.toml`. You can view and update settings using the `dp config` command or by editing the file directly.
 
 ## Config File Location
 
-By default: `~/.dp/config.json`
+By default: `~/.dp/config.toml`
 
 Override with the `DESIRE_PATH_CONFIG` environment variable:
 
 ```bash
-export DESIRE_PATH_CONFIG=/path/to/custom/config.json
+export DESIRE_PATH_CONFIG=/path/to/custom/config.toml
 ```
 
 ## Valid Configuration Keys
@@ -101,18 +101,18 @@ The `--json` flag overrides `default_format` config for that command.
 
 ## Advanced: Direct File Editing
 
-`~/.dp/config.json` is plain JSON. Example:
+`~/.dp/config.toml` is plain TOML. Example:
 
-```json
-{
-  "db_path": "/data/dp/desires.db",
-  "default_source": "claude-code",
-  "known_tools": "Read,Write,Edit,Bash,CustomTool",
-  "default_format": "json"
-}
+```toml
+db_path = "/data/dp/desires.db"
+default_source = "claude-code"
+known_tools = ["Read", "Write", "Edit", "Bash", "CustomTool"]
+default_format = "json"
 ```
 
-If the file doesn't exist, dp creates it on first write. Invalid JSON causes an error—use `dp config` for safer editing.
+If the file doesn't exist, dp creates it on first write. Invalid TOML causes an error — use `dp config` for safer editing.
+
+> **Migration note:** Legacy `config.json` files are automatically migrated to TOML on first load.
 
 ## Database Configuration
 
@@ -158,7 +158,7 @@ For Claude Code specifically, the hook configuration lives in `~/.claude/setting
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `DESIRE_PATH_DB` | Override database path | `export DESIRE_PATH_DB=/tmp/test.db` |
-| `DESIRE_PATH_CONFIG` | Override config file path | `export DESIRE_PATH_CONFIG=/etc/dp/config.json` |
+| `DESIRE_PATH_CONFIG` | Override config file path | `export DESIRE_PATH_CONFIG=/etc/dp/config.toml` |
 
 Environment variables take precedence over config file settings but are overridden by command-line flags.
 
