@@ -1,4 +1,4 @@
-// Package config handles reading and writing the dp configuration file (~/.dp/config.json).
+// Package config handles reading and writing the dp configuration file (~/.dp/config.toml).
 package config
 
 import (
@@ -8,14 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // Config holds dp configuration settings.
 type Config struct {
-	DBPath        string   `json:"db_path,omitempty"`
-	DefaultSource string   `json:"default_source,omitempty"`
-	KnownTools    []string `json:"known_tools,omitempty"`
-	DefaultFormat string   `json:"default_format,omitempty"`
+	DBPath        string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
+	DefaultSource string   `toml:"default_source,omitempty" json:"default_source,omitempty"`
+	KnownTools    []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
+	DefaultFormat string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
 }
 
 // validKeys lists the allowed configuration keys.
@@ -31,8 +33,17 @@ func ValidKeys() []string {
 	return []string{"db_path", "default_format", "default_source", "known_tools"}
 }
 
-// Path returns the default config file path (~/.dp/config.json).
+// Path returns the default config file path (~/.dp/config.toml).
 func Path() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".", ".dp", "config.toml")
+	}
+	return filepath.Join(home, ".dp", "config.toml")
+}
+
+// jsonPath returns the legacy JSON config path for backward compatibility.
+func jsonPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".", ".dp", "config.json")
@@ -40,13 +51,62 @@ func Path() string {
 	return filepath.Join(home, ".dp", "config.json")
 }
 
-// Load reads the config from the default path. Returns an empty Config if the file does not exist.
+// Load reads the config from the default path. If the TOML file does not exist
+// but a legacy JSON config (~/.dp/config.json) does, it migrates the JSON config
+// to TOML automatically.
 func Load() (*Config, error) {
-	return LoadFrom(Path())
+	cfg, err := LoadFrom(Path())
+	if err != nil {
+		return nil, err
+	}
+	// If the TOML file didn't exist, check for legacy JSON config.
+	if cfg.DBPath == "" && cfg.DefaultSource == "" && cfg.DefaultFormat == "" && len(cfg.KnownTools) == 0 {
+		if _, statErr := os.Stat(Path()); errors.Is(statErr, os.ErrNotExist) {
+			legacy := jsonPath()
+			if _, legacyErr := os.Stat(legacy); legacyErr == nil {
+				cfg, err = loadJSON(legacy)
+				if err != nil {
+					return nil, err
+				}
+				// Migrate: write TOML and remove JSON.
+				if saveErr := cfg.SaveTo(Path()); saveErr == nil {
+					os.Remove(legacy)
+				}
+				return cfg, nil
+			}
+		}
+	}
+	return cfg, nil
 }
 
-// LoadFrom reads the config from a specific path. Returns an empty Config if the file does not exist.
+// LoadFrom reads the config from a specific path. Returns an empty Config if
+// the file does not exist. Supports both TOML and JSON formats (detected by
+// file extension; defaults to TOML).
 func LoadFrom(path string) (*Config, error) {
+	if filepath.Ext(path) == ".json" {
+		return loadJSON(path)
+	}
+	return loadTOML(path)
+}
+
+// loadTOML reads a TOML config file.
+func loadTOML(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return &Config{}, nil
+		}
+		return nil, fmt.Errorf("reading config: %w", err)
+	}
+	var cfg Config
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	return &cfg, nil
+}
+
+// loadJSON reads a JSON config file (for backward compatibility).
+func loadJSON(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -67,15 +127,15 @@ func (c *Config) Save() error {
 }
 
 // SaveTo writes the config to a specific path, creating parent directories as needed.
+// Writes TOML format regardless of file extension.
 func (c *Config) SaveTo(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	data, err := json.MarshalIndent(c, "", "  ")
+	data, err := toml.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	data = append(data, '\n')
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}

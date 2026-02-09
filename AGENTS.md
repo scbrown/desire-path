@@ -19,7 +19,7 @@ internal/        Private packages - not importable by external code.
   ingest/        Raw payload → Invocation conversion and persistence.
   record/        Stdin JSON parsing and desire recording.
   analyze/       Similarity engine for tool name suggestions.
-  config/        Configuration file (~/.dp/config.json) management.
+  config/        Configuration file (~/.dp/config.toml) management.
   cli/           Cobra command definitions + table formatting.
 docs/plans/      Architecture and design documents.
 docs/tasks/      Task breakdowns for implementation phases.
@@ -163,7 +163,7 @@ The `default_format` config key can set JSON as default output; the `--json` fla
 
 ### Configuration
 
-`dp config` manages settings in `~/.dp/config.json` via the `internal/config` package. Valid keys: `db_path`, `default_source`, `known_tools`, `default_format`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags.
+`dp config` manages settings in `~/.dp/config.toml` via the `internal/config` package. Valid keys: `db_path`, `default_source`, `known_tools`, `default_format`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags.
 
 ## Source Plugins
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestLoadMissingFile(t *testing.T) {
-	cfg, err := LoadFrom(filepath.Join(t.TempDir(), "nonexistent.json"))
+	cfg, err := LoadFrom(filepath.Join(t.TempDir(), "nonexistent.toml"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -17,7 +17,7 @@ func TestLoadMissingFile(t *testing.T) {
 }
 
 func TestSaveAndLoad(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "subdir", "config.json")
+	path := filepath.Join(t.TempDir(), "subdir", "config.toml")
 	cfg := &Config{
 		DBPath:        "/custom/path.db",
 		DefaultSource: "claude-code",
@@ -48,6 +48,35 @@ func TestSaveAndLoad(t *testing.T) {
 		if loaded.KnownTools[i] != want {
 			t.Errorf("known_tools[%d]: got %q, want %q", i, loaded.KnownTools[i], want)
 		}
+	}
+}
+
+func TestLoadInvalidTOML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.toml")
+	if err := os.WriteFile(path, []byte("= invalid toml ["), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadFrom(path)
+	if err == nil {
+		t.Fatal("expected error for invalid TOML")
+	}
+}
+
+func TestLoadFromJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	data := []byte(`{"db_path":"/legacy.db","default_source":"claude-code"}`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("load JSON: %v", err)
+	}
+	if cfg.DBPath != "/legacy.db" {
+		t.Errorf("db_path: got %q, want /legacy.db", cfg.DBPath)
+	}
+	if cfg.DefaultSource != "claude-code" {
+		t.Errorf("default_source: got %q, want claude-code", cfg.DefaultSource)
 	}
 }
 
@@ -135,9 +164,9 @@ func TestPath(t *testing.T) {
 	if p == "" {
 		t.Fatal("Path() returned empty string")
 	}
-	// Should end with config.json.
-	if filepath.Base(p) != "config.json" {
-		t.Errorf("Path() = %q, want basename config.json", p)
+	// Should end with config.toml.
+	if filepath.Base(p) != "config.toml" {
+		t.Errorf("Path() = %q, want basename config.toml", p)
 	}
 	// Should contain .dp directory.
 	if !filepath.IsAbs(p) {
@@ -150,7 +179,7 @@ func TestPath(t *testing.T) {
 
 func TestSaveToCreatesDir(t *testing.T) {
 	dir := t.TempDir()
-	nested := filepath.Join(dir, "a", "b", "c", "config.json")
+	nested := filepath.Join(dir, "a", "b", "c", "config.toml")
 	cfg := &Config{DBPath: "/test.db"}
 	if err := cfg.SaveTo(nested); err != nil {
 		t.Fatalf("SaveTo: %v", err)
@@ -176,7 +205,7 @@ func TestSetFormatEmptyResetsToDefault(t *testing.T) {
 }
 
 func TestSaveAndLoadEmptyConfig(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
+	path := filepath.Join(t.TempDir(), "config.toml")
 	cfg := &Config{}
 	if err := cfg.SaveTo(path); err != nil {
 		t.Fatalf("SaveTo: %v", err)

@@ -13,7 +13,7 @@ import (
 
 func TestConfigCmdShowEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath = filepath.Join(tmpDir, "config.json")
+	configPath = filepath.Join(tmpDir, "config.toml")
 	jsonOutput = false
 	defer func() {
 		configPath = config.Path()
@@ -51,7 +51,7 @@ func TestConfigCmdShowEmpty(t *testing.T) {
 
 func TestConfigCmdGet(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.json")
+	cfgPath := filepath.Join(tmpDir, "config.toml")
 	configPath = cfgPath
 	jsonOutput = false
 	defer func() {
@@ -90,7 +90,7 @@ func TestConfigCmdGet(t *testing.T) {
 
 func TestConfigCmdGetEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath = filepath.Join(tmpDir, "config.json")
+	configPath = filepath.Join(tmpDir, "config.toml")
 	jsonOutput = false
 	defer func() {
 		configPath = config.Path()
@@ -122,7 +122,7 @@ func TestConfigCmdGetEmpty(t *testing.T) {
 
 func TestConfigCmdSet(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.json")
+	cfgPath := filepath.Join(tmpDir, "config.toml")
 	configPath = cfgPath
 	jsonOutput = false
 	defer func() {
@@ -164,7 +164,7 @@ func TestConfigCmdSet(t *testing.T) {
 
 func TestConfigCmdSetKnownTools(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.json")
+	cfgPath := filepath.Join(tmpDir, "config.toml")
 	configPath = cfgPath
 	jsonOutput = false
 	defer func() {
@@ -194,7 +194,7 @@ func TestConfigCmdSetKnownTools(t *testing.T) {
 
 func TestConfigCmdInvalidKey(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath = filepath.Join(tmpDir, "config.json")
+	configPath = filepath.Join(tmpDir, "config.toml")
 	jsonOutput = false
 	defer func() {
 		configPath = config.Path()
@@ -209,7 +209,7 @@ func TestConfigCmdInvalidKey(t *testing.T) {
 
 func TestConfigCmdShowJSON(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.json")
+	cfgPath := filepath.Join(tmpDir, "config.toml")
 	configPath = cfgPath
 	jsonOutput = true
 	defer func() {
@@ -256,7 +256,7 @@ func TestConfigCmdShowJSON(t *testing.T) {
 
 func TestConfigCmdTooManyArgs(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath = filepath.Join(tmpDir, "config.json")
+	configPath = filepath.Join(tmpDir, "config.toml")
 	jsonOutput = false
 	defer func() {
 		configPath = config.Path()
@@ -271,7 +271,7 @@ func TestConfigCmdTooManyArgs(t *testing.T) {
 
 func TestConfigCmdSetInvalidFormat(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.json")
+	cfgPath := filepath.Join(tmpDir, "config.toml")
 	configPath = cfgPath
 	jsonOutput = false
 	defer func() {
@@ -287,7 +287,7 @@ func TestConfigCmdSetInvalidFormat(t *testing.T) {
 
 func TestConfigCmdSetInvalidKey(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.json")
+	cfgPath := filepath.Join(tmpDir, "config.toml")
 	configPath = cfgPath
 	jsonOutput = false
 	defer func() {

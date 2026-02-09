@@ -17,7 +17,7 @@ Output quality, machine-readable output, configuration, and test coverage.
 - [x] Structured output suitable for `jq` piping
 
 ### 4.3 Config file support
-- [x] Config location: `~/.dp/config.json`
+- [x] Config location: `~/.dp/config.toml`
 - [x] `dp config` - Show current config
 - [x] `dp config <key> <value>` - Set a value
 - [x] `dp config <key>` - Get a value

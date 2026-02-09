@@ -31,7 +31,7 @@ The `Fields` struct returned by plugins contains everything needed to create bot
 ### Tool Allowlist
 
 Users should be able to specify which tools to track (e.g., only `Read`, `Grep`, `Bash`) rather than recording every invocation. This affects:
-- **Config**: add `track_tools []string` to `~/.dp/config.json` (empty = track all)
+- **Config**: add `track_tools []string` to `~/.dp/config.toml` (empty = track all)
 - **Filtering point**: the CLI layer (`dp ingest` RunE) checks config before calling `ingest.Ingest()`. Keep the ingest package unaware of filtering — that's a policy concern, not a parsing concern.
 - **Applies to invocations only** — desires (failures) should always be recorded regardless of allowlist, since failures are inherently noteworthy.
 

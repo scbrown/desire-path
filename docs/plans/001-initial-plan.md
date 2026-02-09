@@ -117,7 +117,7 @@ The following decisions were made during implementation and differ from or exten
 A `Table` abstraction wraps `text/tabwriter` to provide consistent column-aligned output across all commands. It auto-detects TTY for bold headers and terminal width, falling back to 80 columns when piped. All output commands use this instead of raw `tabwriter`.
 
 ### Configuration System (`internal/config/`)
-A dedicated `config` package manages `~/.dp/config.json`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags when the user hasn't set them on the command line. Valid config keys: `db_path`, `default_source`, `known_tools`, `default_format`.
+A dedicated `config` package manages `~/.dp/config.toml`. The root command's `PersistentPreRun` loads config and applies defaults for `--db` and `--json` flags when the user hasn't set them on the command line. Valid config keys: `db_path`, `default_source`, `known_tools`, `default_format`.
 
 ### JSON Output Mode
 The `--json` global flag is defined on the root command and available to all subcommands via the `jsonOutput` package variable. When enabled, commands emit structured JSON to stdout instead of table output. The `default_format` config key can set JSON as the default.

@@ -13,7 +13,7 @@ import (
 var configCmd = &cobra.Command{
 	Use:   "config [key] [value]",
 	Short: "Show or modify configuration",
-	Long: `View or change dp configuration stored in ~/.dp/config.json.
+	Long: `View or change dp configuration stored in ~/.dp/config.toml.
 
 With no arguments, shows all configuration settings.
 With one argument, shows the value of that key.
