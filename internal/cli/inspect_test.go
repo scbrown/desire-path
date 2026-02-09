@@ -37,6 +37,8 @@ func resetFlags(t *testing.T) {
 	t.Helper()
 	jsonOutput = false
 	exportType = "desires"
+	recordSource = ""
+	ingestSource = ""
 }
 
 func TestInspectCmdBasic(t *testing.T) {

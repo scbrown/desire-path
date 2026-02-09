@@ -10,6 +10,7 @@ import (
 
 	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/ingest"
+	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
@@ -42,45 +43,12 @@ Use "dp ingest --source <name>" with data piped to stdin.`,
 			return fmt.Errorf("--source flag is required (available: %s)", strings.Join(names, ", "))
 		}
 
-		raw, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("reading stdin: %w", err)
-		}
-
-		// Extract fields first so we can check the tool name against the allowlist.
-		src := source.Get(ingestSource)
-		if src == nil {
-			return fmt.Errorf("unknown source: %q", ingestSource)
-		}
-		fields, err := src.Extract(raw)
-		if err != nil {
-			return fmt.Errorf("extracting fields: %w", err)
-		}
-
-		// Check track_tools allowlist: if non-empty and tool not listed, skip silently.
-		cfg, cfgErr := config.LoadFrom(configPath)
-		if cfgErr == nil && len(cfg.TrackTools) > 0 {
-			allowed := false
-			for _, t := range cfg.TrackTools {
-				if t == fields.ToolName {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return nil
-			}
-		}
-
-		s, err := store.New(dbPath)
-		if err != nil {
-			return fmt.Errorf("open database: %w", err)
-		}
-		defer s.Close()
-
-		inv, err := ingest.IngestFields(context.Background(), s, fields, ingestSource)
+		inv, err := doIngest(ingestSource)
 		if err != nil {
 			return err
+		}
+		if inv == nil {
+			return nil // filtered by allowlist
 		}
 
 		if jsonOutput {
@@ -91,6 +59,53 @@ Use "dp ingest --source <name>" with data piped to stdin.`,
 		fmt.Fprintf(os.Stderr, "Ingested invocation: %s (source: %s, tool: %s)\n", inv.ID, inv.Source, inv.ToolName)
 		return nil
 	},
+}
+
+// doIngest runs the ingest pipeline: read stdin, extract fields via source
+// plugin, check track_tools allowlist, and persist the invocation. Returns
+// nil invocation (and nil error) when the tool is filtered by the allowlist.
+func doIngest(sourceName string) (*model.Invocation, error) {
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("reading stdin: %w", err)
+	}
+
+	src := source.Get(sourceName)
+	if src == nil {
+		return nil, fmt.Errorf("unknown source: %q", sourceName)
+	}
+	fields, err := src.Extract(raw)
+	if err != nil {
+		return nil, fmt.Errorf("extracting fields: %w", err)
+	}
+
+	// Check track_tools allowlist: if non-empty and tool not listed, skip silently.
+	cfg, cfgErr := config.LoadFrom(configPath)
+	if cfgErr == nil && len(cfg.TrackTools) > 0 {
+		allowed := false
+		for _, t := range cfg.TrackTools {
+			if t == fields.ToolName {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, nil
+		}
+	}
+
+	s, err := store.New(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	defer s.Close()
+
+	inv, err := ingest.IngestFields(context.Background(), s, fields, sourceName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &inv, nil
 }
 
 func init() {
