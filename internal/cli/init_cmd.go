@@ -20,18 +20,18 @@ var (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Set up integration with AI coding tools",
-	Long: `Init configures dp to automatically record failed tool calls from AI coding
+	Long: `Init configures dp to automatically record all tool calls from AI coding
 assistants. Use --source to specify which tool to configure.
 
-By default, only failures are recorded (PostToolUseFailure → dp record).
-Use --track-all to also record every tool invocation via dp ingest. This
-fires on every tool call and can generate significant data.
+A single dp ingest hook is installed for both PostToolUse and
+PostToolUseFailure events. The ingest pipeline dual-writes failures
+to both the invocations and desires tables, so all data is captured
+through a single entry point.
 
 The command delegates to the source plugin's installer, which merges
 configuration into the tool's settings file without overwriting existing
 hooks or other configuration.`,
 	Example: `  dp init --source claude-code
-  dp init --source claude-code --track-all
   dp init --claude-code`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Handle deprecated --claude-code flag as alias.
@@ -56,7 +56,8 @@ hooks or other configuration.`,
 
 func init() {
 	initCmd.Flags().StringVar(&initSource, "source", "", "source plugin to configure (e.g., claude-code)")
-	initCmd.Flags().BoolVar(&initTrackAll, "track-all", false, "also install hooks to record all tool invocations (not just failures)")
+	initCmd.Flags().BoolVar(&initTrackAll, "track-all", false, "all invocations are now tracked by default (no-op)")
+	initCmd.Flags().MarkDeprecated("track-all", "all invocations are now tracked by default")
 	initCmd.Flags().BoolVar(&initClaudeCode, "claude-code", false, "configure Claude Code integration (deprecated: use --source claude-code)")
 	initCmd.Flags().MarkDeprecated("claude-code", "use --source claude-code instead")
 	rootCmd.AddCommand(initCmd)
@@ -109,11 +110,7 @@ func runInit(name string, trackAll bool) error {
 		})
 	}
 	fmt.Fprintf(os.Stdout, "Source %q integration configured!\n", name)
-	if trackAll {
-		fmt.Fprintf(os.Stdout, "All tool invocations will be recorded (PostToolUse + PostToolUseFailure).\n")
-	} else {
-		fmt.Fprintf(os.Stdout, "Failures will be automatically recorded when tools fail.\n")
-	}
+	fmt.Fprintf(os.Stdout, "All tool invocations will be recorded (PostToolUse + PostToolUseFailure).\n")
 	fmt.Fprintf(os.Stdout, "View them with:   dp list\n")
 	fmt.Fprintf(os.Stdout, "Analyze patterns: dp paths\n")
 	return nil

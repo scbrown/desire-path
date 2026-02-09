@@ -38,8 +38,8 @@ future similar attempts succeed.
 Data is stored in a SQLite database at ~/.dp/desires.db (configurable via
 --db flag or dp config db_path). All output commands support --json for
 machine-readable output.`,
-	Example: `  # Record a failed tool call
-  echo '{"tool_name":"read_file","error":"unknown tool"}' | dp record
+	Example: `  # Ingest a tool call via source plugin
+  echo '{"tool_name":"Read","session_id":"s1","cwd":"/tmp"}' | dp ingest --source claude-code
 
   # View recent desires and top patterns
   dp list --since 7d
@@ -50,7 +50,7 @@ machine-readable output.`,
   dp alias read_file Read
 
   # Set up automatic recording from Claude Code
-  dp init --claude-code`,
+  dp init --source claude-code`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadFrom(configPath)
 		if err != nil {

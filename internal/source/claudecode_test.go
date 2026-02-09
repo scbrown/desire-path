@@ -234,21 +234,24 @@ func TestClaudeCodeInstall(t *testing.T) {
 		t.Fatalf("parsing hooks: %v", err)
 	}
 
-	ptufRaw, ok := hooks["PostToolUseFailure"]
-	if !ok {
-		t.Fatal("hooks should contain PostToolUseFailure")
-	}
+	// Both PostToolUse and PostToolUseFailure should have dp ingest hooks.
+	for _, event := range []string{"PostToolUse", "PostToolUseFailure"} {
+		raw, ok := hooks[event]
+		if !ok {
+			t.Fatalf("hooks should contain %s", event)
+		}
 
-	var entries []claudeHookEntry
-	if err := json.Unmarshal(ptufRaw, &entries); err != nil {
-		t.Fatalf("parsing PostToolUseFailure: %v", err)
-	}
+		var entries []claudeHookEntry
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			t.Fatalf("parsing %s: %v", event, err)
+		}
 
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 hook entry, got %d", len(entries))
-	}
-	if entries[0].Hooks[0].Command != dpHookCommand {
-		t.Errorf("command = %q, want %q", entries[0].Hooks[0].Command, dpHookCommand)
+		if len(entries) != 1 {
+			t.Fatalf("%s: expected 1 hook entry, got %d", event, len(entries))
+		}
+		if entries[0].Hooks[0].Command != dpHookCommand {
+			t.Errorf("%s: command = %q, want %q", event, entries[0].Hooks[0].Command, dpHookCommand)
+		}
 	}
 }
 
@@ -266,7 +269,7 @@ func TestClaudeCodeInstallIdempotent(t *testing.T) {
 		t.Fatalf("second Install() error: %v", err)
 	}
 
-	// Should still have exactly one hook entry.
+	// Should still have exactly one hook entry per event.
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		t.Fatalf("reading settings: %v", err)
@@ -282,13 +285,15 @@ func TestClaudeCodeInstallIdempotent(t *testing.T) {
 		t.Fatalf("parsing hooks: %v", err)
 	}
 
-	var entries []claudeHookEntry
-	if err := json.Unmarshal(hooks["PostToolUseFailure"], &entries); err != nil {
-		t.Fatalf("parsing PostToolUseFailure: %v", err)
-	}
+	for _, event := range []string{"PostToolUse", "PostToolUseFailure"} {
+		var entries []claudeHookEntry
+		if err := json.Unmarshal(hooks[event], &entries); err != nil {
+			t.Fatalf("parsing %s: %v", event, err)
+		}
 
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 hook entry after double install, got %d", len(entries))
+		if len(entries) != 1 {
+			t.Fatalf("%s: expected 1 hook entry after double install, got %d", event, len(entries))
+		}
 	}
 }
 
@@ -364,23 +369,35 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 		t.Error("PreToolUse hook should be preserved")
 	}
 
-	// PostToolUseFailure should now have 2 entries.
-	var entries []claudeHookEntry
-	if err := json.Unmarshal(hooks["PostToolUseFailure"], &entries); err != nil {
+	// PostToolUseFailure should now have 2 entries (existing + dp ingest).
+	var ptufEntries []claudeHookEntry
+	if err := json.Unmarshal(hooks["PostToolUseFailure"], &ptufEntries); err != nil {
 		t.Fatalf("parsing PostToolUseFailure: %v", err)
 	}
 
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 hook entries, got %d", len(entries))
+	if len(ptufEntries) != 2 {
+		t.Fatalf("PostToolUseFailure: expected 2 hook entries, got %d", len(ptufEntries))
 	}
 
 	// Original hook should be first.
-	if entries[0].Hooks[0].Command != "other-tool record" {
-		t.Errorf("first entry command = %q, want %q", entries[0].Hooks[0].Command, "other-tool record")
+	if ptufEntries[0].Hooks[0].Command != "other-tool record" {
+		t.Errorf("first entry command = %q, want %q", ptufEntries[0].Hooks[0].Command, "other-tool record")
 	}
 	// dp hook should be second.
-	if entries[1].Hooks[0].Command != dpHookCommand {
-		t.Errorf("second entry command = %q, want %q", entries[1].Hooks[0].Command, dpHookCommand)
+	if ptufEntries[1].Hooks[0].Command != dpHookCommand {
+		t.Errorf("second entry command = %q, want %q", ptufEntries[1].Hooks[0].Command, dpHookCommand)
+	}
+
+	// PostToolUse should have 1 entry (dp ingest).
+	var ptuEntries []claudeHookEntry
+	if err := json.Unmarshal(hooks["PostToolUse"], &ptuEntries); err != nil {
+		t.Fatalf("parsing PostToolUse: %v", err)
+	}
+	if len(ptuEntries) != 1 {
+		t.Fatalf("PostToolUse: expected 1 hook entry, got %d", len(ptuEntries))
+	}
+	if ptuEntries[0].Hooks[0].Command != dpHookCommand {
+		t.Errorf("PostToolUse command = %q, want %q", ptuEntries[0].Hooks[0].Command, dpHookCommand)
 	}
 }
 
@@ -436,22 +453,38 @@ func TestClaudeCodeIsInstalledWithDPRecord(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeIsInstalledWithDPIngest(t *testing.T) {
+func TestClaudeCodeIsInstalledWithLegacyHook(t *testing.T) {
 	dir := t.TempDir()
 	settingsPath := filepath.Join(dir, "settings.json")
 
-	c := &claudeCode{}
-	// Install with track-all to get dp ingest hooks.
-	if err := c.Install(InstallOpts{SettingsPath: settingsPath, TrackAll: true}); err != nil {
-		t.Fatalf("Install() error: %v", err)
+	// Write settings with legacy dp record hook.
+	settings := `{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dp record --source claude-code",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}`
+	if err := os.WriteFile(settingsPath, []byte(settings), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
+	c := &claudeCode{}
 	installed, err := c.IsInstalled(dir)
 	if err != nil {
 		t.Fatalf("IsInstalled() error: %v", err)
 	}
 	if !installed {
-		t.Error("IsInstalled() should be true with dp ingest hooks")
+		t.Error("IsInstalled() should be true with legacy dp record hooks")
 	}
 }
 

@@ -52,24 +52,24 @@ func TestRecordCmdJSON(t *testing.T) {
 	}()
 
 	stdout, _ := captureStdoutAndStderr(t, func() {
-		rootCmd.SetArgs([]string{"record", "--db", db, "--json"})
+		rootCmd.SetArgs([]string{"record", "--source", "claude-code", "--db", db, "--json"})
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 	})
 	os.Stdin = oldStdin
 
-	var d model.Desire
-	if err := json.Unmarshal([]byte(stdout), &d); err != nil {
+	var inv model.Invocation
+	if err := json.Unmarshal([]byte(stdout), &inv); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
 	}
-	if d.ToolName != "read_file" {
-		t.Errorf("ToolName = %q, want %q", d.ToolName, "read_file")
+	if inv.ToolName != "read_file" {
+		t.Errorf("ToolName = %q, want %q", inv.ToolName, "read_file")
 	}
-	if d.Error != "unknown tool" {
-		t.Errorf("Error = %q, want %q", d.Error, "unknown tool")
+	if inv.Error != "unknown tool" {
+		t.Errorf("Error = %q, want %q", inv.Error, "unknown tool")
 	}
-	if d.ID == "" {
+	if inv.ID == "" {
 		t.Error("ID should be auto-generated")
 	}
 }
@@ -87,7 +87,7 @@ func TestRecordCmdNoJSON(t *testing.T) {
 	}()
 
 	stdout, stderr := captureStdoutAndStderr(t, func() {
-		rootCmd.SetArgs([]string{"record", "--db", db})
+		rootCmd.SetArgs([]string{"record", "--source", "claude-code", "--db", db})
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
@@ -97,8 +97,21 @@ func TestRecordCmdNoJSON(t *testing.T) {
 	if stdout != "" {
 		t.Errorf("expected no stdout without --json, got: %s", stdout)
 	}
-	if !strings.Contains(stderr, "Recorded desire:") {
-		t.Errorf("expected confirmation on stderr, got: %s", stderr)
+	if !strings.Contains(stderr, "Recorded invocation:") {
+		t.Errorf("expected 'Recorded invocation:' on stderr, got: %s", stderr)
+	}
+}
+
+func TestRecordCmdRequiresSource(t *testing.T) {
+	resetFlags(t)
+
+	rootCmd.SetArgs([]string{"record"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when no --source specified")
+	}
+	if !strings.Contains(err.Error(), "--source flag is required") {
+		t.Errorf("error should mention --source, got: %v", err)
 	}
 }
 
