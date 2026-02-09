@@ -1,7 +1,6 @@
 [book]
 authors = ["Steve Brown"]
 language = "en"
-multilingual = false
 src = "src"
 title = "Desire Path Documentation"
 description = "Track and analyze failed AI tool calls to build better developer tools"
