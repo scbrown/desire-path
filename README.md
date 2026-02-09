@@ -68,7 +68,7 @@ $ dp alias search_files Grep
 
 🧠 **Smart Suggestions** — Levenshtein-powered similarity engine finds the real tool name behind every hallucination. CamelCase and underscore-aware.
 
-🔗 **[Alias System](https://scbrown.github.io/desire-path/concepts/aliases.html)** — Map hallucinated names to real tools (`search_files` → `Grep`). Aliases show up in `dp paths` and `dp suggest` output so every query connects the dots. Upsert on write — re-alias anytime, no duplicates.
+🔗 **[Alias System](https://scbrown.github.io/desire-path/concepts/aliases.html)** — Annotate patterns with what they *should* map to (`search_files` → `Grep`). Aliases appear in `dp paths` output and short-circuit `dp suggest`. Use them to build your rosetta stone, then act on it — add instructions to CLAUDE.md, build MCP tool wrappers, or lobby for better tool names upstream.
 
 🔌 **Plugin Architecture** — Extensible source plugins. Claude Code ships built-in. Write your own in ~50 lines of Go.
 
