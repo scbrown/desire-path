@@ -12,19 +12,15 @@
   <rect x=".5" y=".5" width="659" height="149" rx="10" fill="none" stroke="#d0d7de"/>
 
   <g transform="translate(24, 37)">
-    <!-- Winding path: d's left bowl (upper, offset high) -->
-    <path d="M 30,6 C 16,6 4,16 4,23 C 4,32 16,40 30,40"
+    <!-- Winding path: one continuous S-curve through d and p bowls -->
+    <path d="M 30,6 C 16,6 4,16 4,23 C 4,32 16,37 30,37 C 44,37 56,44 56,51 C 56,60 44,68 30,68"
           fill="none" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
 
-    <!-- Winding path: p's right bowl (lower, offset low) -->
-    <path d="M 30,34 C 44,34 56,44 56,51 C 56,60 44,68 30,68"
-          fill="none" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
-
-    <!-- Desire path: the straight vertical line through both -->
+    <!-- Desire path: straight vertical line -->
     <line x1="30" y1="0" x2="30" y2="74"
-          stroke="url(#g)" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="30" cy="0" r="3" fill="url(#g)"/>
-    <circle cx="30" cy="74" r="3" fill="url(#g)"/>
+          stroke="#e8590c" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="30" cy="0" r="3" fill="#e8590c"/>
+    <circle cx="30" cy="74" r="3" fill="#e8590c"/>
   </g>
 
   <!-- DESIRE PATH (figlet small font) -->
