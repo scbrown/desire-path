@@ -27,6 +27,9 @@ func init() {
 // Name returns "claude-code".
 func (c *claudeCode) Name() string { return "claude-code" }
 
+// Description returns a short human-readable description of this source.
+func (c *claudeCode) Description() string { return "Claude Code PostToolUse/Failure hooks" }
+
 // Extract parses Claude Code hook JSON and maps fields to the universal
 // Fields struct. Claude Code provides: session_id, hook_event_name,
 // tool_name, tool_input, tool_use_id, error, cwd, transcript_path,
@@ -111,6 +114,40 @@ func (c *claudeCode) Install(opts InstallOpts) error {
 		return setupClaudeCodeWithIngest(settingsPath)
 	}
 	return setupClaudeCodeAt(settingsPath)
+}
+
+// IsInstalled checks whether dp hooks are already configured in the Claude
+// Code settings file at configDir/settings.json.
+func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
+	settingsPath := filepath.Join(configDir, "settings.json")
+
+	settings, err := readClaudeSettings(settingsPath)
+	if err != nil {
+		return false, err
+	}
+
+	raw, ok := settings["hooks"]
+	if !ok {
+		return false, nil
+	}
+
+	var hooks map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &hooks); err != nil {
+		return false, fmt.Errorf("parse hooks: %w", err)
+	}
+
+	// Check all hook events for any dp command.
+	for _, eventRaw := range hooks {
+		var entries []claudeHookEntry
+		if err := json.Unmarshal(eventRaw, &entries); err != nil {
+			continue
+		}
+		if hasDPHookCommand(entries, dpHookCommand) || hasDPHookCommand(entries, dpIngestCommand) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // claudeSettings represents the relevant subset of a Claude Code settings file.

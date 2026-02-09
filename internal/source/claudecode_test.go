@@ -15,6 +15,17 @@ func TestClaudeCodeName(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeDescription(t *testing.T) {
+	c := &claudeCode{}
+	got := c.Description()
+	if got == "" {
+		t.Error("Description() should not be empty")
+	}
+	if got != "Claude Code PostToolUse/Failure hooks" {
+		t.Errorf("Description() = %q, want %q", got, "Claude Code PostToolUse/Failure hooks")
+	}
+}
+
 func TestClaudeCodeExtract(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -370,6 +381,112 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 	// dp hook should be second.
 	if entries[1].Hooks[0].Command != dpHookCommand {
 		t.Errorf("second entry command = %q, want %q", entries[1].Hooks[0].Command, dpHookCommand)
+	}
+}
+
+func TestClaudeCodeIsInstalledNoFile(t *testing.T) {
+	dir := t.TempDir()
+	c := &claudeCode{}
+
+	installed, err := c.IsInstalled(dir)
+	if err != nil {
+		t.Fatalf("IsInstalled() error: %v", err)
+	}
+	if installed {
+		t.Error("IsInstalled() should be false when settings file does not exist")
+	}
+}
+
+func TestClaudeCodeIsInstalledNoHooks(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(`{"other_setting": "value"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &claudeCode{}
+	installed, err := c.IsInstalled(claudeDir)
+	if err != nil {
+		t.Fatalf("IsInstalled() error: %v", err)
+	}
+	if installed {
+		t.Error("IsInstalled() should be false when no hooks are configured")
+	}
+}
+
+func TestClaudeCodeIsInstalledWithDPRecord(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+
+	c := &claudeCode{}
+	// Install hooks first.
+	if err := c.Install(InstallOpts{SettingsPath: settingsPath}); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+
+	installed, err := c.IsInstalled(dir)
+	if err != nil {
+		t.Fatalf("IsInstalled() error: %v", err)
+	}
+	if !installed {
+		t.Error("IsInstalled() should be true after Install()")
+	}
+}
+
+func TestClaudeCodeIsInstalledWithDPIngest(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+
+	c := &claudeCode{}
+	// Install with track-all to get dp ingest hooks.
+	if err := c.Install(InstallOpts{SettingsPath: settingsPath, TrackAll: true}); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+
+	installed, err := c.IsInstalled(dir)
+	if err != nil {
+		t.Fatalf("IsInstalled() error: %v", err)
+	}
+	if !installed {
+		t.Error("IsInstalled() should be true with dp ingest hooks")
+	}
+}
+
+func TestClaudeCodeIsInstalledOtherHooksOnly(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+
+	// Write settings with non-dp hooks only.
+	settings := `{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "other-tool record",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  }
+}`
+	if err := os.WriteFile(settingsPath, []byte(settings), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &claudeCode{}
+	installed, err := c.IsInstalled(dir)
+	if err != nil {
+		t.Fatalf("IsInstalled() error: %v", err)
+	}
+	if installed {
+		t.Error("IsInstalled() should be false when only non-dp hooks exist")
 	}
 }
 

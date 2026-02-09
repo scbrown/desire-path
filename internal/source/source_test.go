@@ -15,7 +15,8 @@ type stubSource struct {
 	name string
 }
 
-func (s *stubSource) Name() string                   { return s.name }
+func (s *stubSource) Name() string                    { return s.name }
+func (s *stubSource) Description() string              { return "stub source for testing" }
 func (s *stubSource) Extract([]byte) (*Fields, error) { return &Fields{ToolName: "stub"}, nil }
 
 // claudeCodeSource is a test double that mimics a Claude Code source plugin.
@@ -23,7 +24,8 @@ func (s *stubSource) Extract([]byte) (*Fields, error) { return &Fields{ToolName:
 // PostToolUseFailure and maps fields to the universal Fields struct.
 type claudeCodeSource struct{}
 
-func (c *claudeCodeSource) Name() string { return "claude-code" }
+func (c *claudeCodeSource) Name() string        { return "claude-code" }
+func (c *claudeCodeSource) Description() string { return "Claude Code hooks (test double)" }
 
 func (c *claudeCodeSource) Extract(raw []byte) (*Fields, error) {
 	var payload map[string]json.RawMessage
@@ -82,6 +84,49 @@ func (c *claudeCodeSource) Extract(raw []byte) (*Fields, error) {
 // settings file without overwriting existing hooks.
 type claudeCodeInstaller struct {
 	claudeCodeSource
+}
+
+func (c *claudeCodeInstaller) IsInstalled(configDir string) (bool, error) {
+	settingsPath := filepath.Join(configDir, "settings.json")
+	data, err := os.ReadFile(settingsPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return false, err
+	}
+	raw, ok := settings["hooks"]
+	if !ok {
+		return false, nil
+	}
+	var hooks map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &hooks); err != nil {
+		return false, err
+	}
+	type hookInner struct {
+		Command string `json:"command"`
+	}
+	type hookEntry struct {
+		Hooks []hookInner `json:"hooks"`
+	}
+	for _, eventRaw := range hooks {
+		var entries []hookEntry
+		if err := json.Unmarshal(eventRaw, &entries); err != nil {
+			continue
+		}
+		for _, e := range entries {
+			for _, h := range e.Hooks {
+				if h.Command == "dp record --source claude-code" || h.Command == "dp ingest --source claude-code" {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }
 
 func (c *claudeCodeInstaller) Install(opts InstallOpts) error {

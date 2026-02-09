@@ -20,7 +20,8 @@ type fakeSource struct {
 	err     error
 }
 
-func (f *fakeSource) Name() string                        { return f.name }
+func (f *fakeSource) Name() string                           { return f.name }
+func (f *fakeSource) Description() string                     { return "fake source for testing" }
 func (f *fakeSource) Extract([]byte) (*source.Fields, error) {
 	if f.err != nil {
 		return nil, f.err

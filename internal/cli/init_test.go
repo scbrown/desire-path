@@ -95,4 +95,5 @@ type noInstallerSource struct {
 }
 
 func (s *noInstallerSource) Name() string                              { return s.name }
+func (s *noInstallerSource) Description() string                       { return "test source without installer" }
 func (s *noInstallerSource) Extract(raw []byte) (*source.Fields, error) { return nil, nil }

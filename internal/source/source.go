@@ -16,6 +16,10 @@ type Source interface {
 	// Name returns the unique identifier for this source (e.g., "claude-code").
 	Name() string
 
+	// Description returns a short human-readable description of this source
+	// (e.g., "Claude Code PostToolUse/Failure hooks").
+	Description() string
+
 	// Extract parses raw bytes and returns universal fields.
 	// Source-specific fields are placed in Fields.Extra.
 	Extract(raw []byte) (*Fields, error)
@@ -57,6 +61,12 @@ type InstallOpts struct {
 type Installer interface {
 	// Install configures the source integration using the given options.
 	Install(opts InstallOpts) error
+
+	// IsInstalled reports whether hooks are already configured in the
+	// target tool's settings directory. configDir is the tool's config
+	// directory (e.g., "~/.claude"); the installer knows which files to
+	// check within it.
+	IsInstalled(configDir string) (bool, error)
 }
 
 var (
