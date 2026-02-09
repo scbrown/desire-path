@@ -68,7 +68,7 @@ $ dp alias search_files Grep
 
 🧠 **Smart Suggestions** — Levenshtein-powered similarity engine finds the real tool name behind every hallucination. CamelCase and underscore-aware.
 
-🔗 **Alias System** — Map `read_file` → `Read` once, see it everywhere. Upsert behavior, instant updates.
+🔗 **[Alias System](docs/book/src/concepts/aliases.md)** — Map hallucinated names to real tools (`search_files` → `Grep`). Aliases show up in `dp paths` and `dp suggest` output so every query connects the dots. Upsert on write — re-alias anytime, no duplicates.
 
 🔌 **Plugin Architecture** — Extensible source plugins. Claude Code ships built-in. Write your own in ~50 lines of Go.
 
@@ -76,7 +76,7 @@ $ dp alias search_files Grep
 
 💾 **Zero-Config Storage** — Embedded SQLite, pure Go, no CGo. Just works. Single file at `~/.dp/desires.db`.
 
-📤 **Export Anything** — JSON, CSV, pipe to `jq`. Your data, your way.
+📤 **[Export Anything](docs/book/src/commands/export.md)** — Dump raw data as JSONL or CSV. Pipe through `jq` for ad-hoc analysis, feed into dashboards, or back up with `dp export > backup.jsonl`. Supports filtering by date and data type (failures vs all invocations).
 
 🖥️ **Beautiful Output** — TTY-aware tables with bold headers. `--json` everywhere for scripting.
 
