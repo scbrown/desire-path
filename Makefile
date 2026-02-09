@@ -1,10 +1,13 @@
-.PHONY: build test vet clean install docs docs-serve
+.PHONY: build test integration-test vet clean install docs docs-serve
 
 build:
 	go build -o dp ./cmd/dp
 
 test:
 	go test ./...
+
+integration-test:
+	go test -tags integration ./internal/integration/
 
 vet:
 	go vet ./...
