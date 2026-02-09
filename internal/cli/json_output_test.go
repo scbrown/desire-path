@@ -276,8 +276,9 @@ func TestInitCmdJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
 	}
-	if result["status"] != "configured" {
-		t.Errorf("status = %v, want %q", result["status"], "configured")
+	status, _ := result["status"].(string)
+	if status != "configured" && status != "already_configured" {
+		t.Errorf("status = %v, want %q or %q", result["status"], "configured", "already_configured")
 	}
 	if result["source"] != "claude-code" {
 		t.Errorf("source = %v, want %q", result["source"], "claude-code")

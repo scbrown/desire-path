@@ -79,6 +79,21 @@ func runInit(name string, trackAll bool) error {
 		return fmt.Errorf("source %q does not support auto-install", name)
 	}
 
+	// Check if hooks are already configured for idempotency.
+	installed, err := installer.IsInstalled("")
+	if err == nil && installed {
+		if jsonOutput {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(map[string]interface{}{
+				"status": "already_configured",
+				"source": name,
+			})
+		}
+		fmt.Fprintf(os.Stdout, "hooks already configured for %s\n", name)
+		return nil
+	}
+
 	opts := source.InstallOpts{TrackAll: trackAll}
 	if err := installer.Install(opts); err != nil {
 		return err

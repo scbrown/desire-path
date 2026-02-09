@@ -117,8 +117,16 @@ func (c *claudeCode) Install(opts InstallOpts) error {
 }
 
 // IsInstalled checks whether dp hooks are already configured in the Claude
-// Code settings file at configDir/settings.json.
+// Code settings file at configDir/settings.json. If configDir is empty, it
+// defaults to ~/.claude.
 func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
+	if configDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Errorf("determine home directory: %w", err)
+		}
+		configDir = filepath.Join(home, ".claude")
+	}
 	settingsPath := filepath.Join(configDir, "settings.json")
 
 	settings, err := readClaudeSettings(settingsPath)
