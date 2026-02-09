@@ -267,6 +267,38 @@ func TestSaveAndLoadTrackTools(t *testing.T) {
 	}
 }
 
+func TestTrackToolsSetSaveLoadGet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	cfg := &Config{}
+
+	// Set via JSON input (the Set interface).
+	if err := cfg.Set("track_tools", `["Read","Bash","Write"]`); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	// Save to TOML.
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Load from TOML.
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	// Get via JSON output (the Get interface).
+	got, err := loaded.Get("track_tools")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+
+	want := `["Read","Bash","Write"]`
+	if got != want {
+		t.Errorf("track_tools round-trip: got %q, want %q", got, want)
+	}
+}
+
 func TestLoadFromReadError(t *testing.T) {
 	// Try to read a directory as a file.
 	dir := t.TempDir()
