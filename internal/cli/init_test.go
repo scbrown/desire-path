@@ -69,7 +69,7 @@ func TestInitCmdClaudeCodeConflictsWithDifferentSource(t *testing.T) {
 }
 
 func TestRunInitUnknownSource(t *testing.T) {
-	err := runInit("nonexistent-source", false)
+	err := runInit("nonexistent-source", false, "")
 	if err == nil {
 		t.Fatal("expected error for unknown source")
 	}
@@ -82,7 +82,7 @@ func TestRunInitSourceWithoutInstaller(t *testing.T) {
 	// Register a source that does NOT implement Installer.
 	source.Register(&noInstallerSource{name: "test-no-installer-init"})
 
-	err := runInit("test-no-installer-init", false)
+	err := runInit("test-no-installer-init", false, "")
 	if err == nil {
 		t.Fatal("expected error for source without Installer")
 	}
@@ -112,7 +112,7 @@ func TestRunInitAlreadyInstalled(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runInit("test-already-installed", false)
+		errCh <- runInit("test-already-installed", false, "")
 		w.Close()
 	}()
 
@@ -151,7 +151,7 @@ func TestRunInitAlreadyInstalledJSON(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runInit("test-already-installed-json", false)
+		errCh <- runInit("test-already-installed-json", false, "")
 		w.Close()
 	}()
 
@@ -185,7 +185,7 @@ func TestRunInitNotYetInstalled(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runInit("test-not-yet-installed", false)
+		errCh <- runInit("test-not-yet-installed", false, "")
 		w.Close()
 	}()
 

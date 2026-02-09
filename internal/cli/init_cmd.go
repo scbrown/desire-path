@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/scbrown/desire-path/internal/source"
@@ -14,6 +15,7 @@ var (
 	initSource     string
 	initClaudeCode bool
 	initTrackAll   bool
+	initSettings   string
 )
 
 // initCmd configures integration with AI coding tools.
@@ -50,7 +52,7 @@ hooks or other configuration.`,
 			return fmt.Errorf("specify a source with --source NAME (available: %s)", strings.Join(names, ", "))
 		}
 
-		return runInit(initSource, initTrackAll)
+		return runInit(initSource, initTrackAll, initSettings)
 	},
 }
 
@@ -60,12 +62,13 @@ func init() {
 	initCmd.Flags().MarkDeprecated("track-all", "all invocations are now tracked by default")
 	initCmd.Flags().BoolVar(&initClaudeCode, "claude-code", false, "configure Claude Code integration (deprecated: use --source claude-code)")
 	initCmd.Flags().MarkDeprecated("claude-code", "use --source claude-code instead")
+	initCmd.Flags().StringVar(&initSettings, "settings", "", "path to settings file (default: source-specific)")
 	rootCmd.AddCommand(initCmd)
 }
 
 // runInit looks up the named source plugin, checks if it supports
 // installation, and delegates to its Install method.
-func runInit(name string, trackAll bool) error {
+func runInit(name string, trackAll bool, settingsPath string) error {
 	src := source.Get(name)
 	if src == nil {
 		names := source.Names()
@@ -81,7 +84,11 @@ func runInit(name string, trackAll bool) error {
 	}
 
 	// Check if hooks are already configured for idempotency.
-	installed, err := installer.IsInstalled("")
+	configDir := ""
+	if settingsPath != "" {
+		configDir = filepath.Dir(settingsPath)
+	}
+	installed, err := installer.IsInstalled(configDir)
 	if err == nil && installed {
 		if jsonOutput {
 			enc := json.NewEncoder(os.Stdout)
@@ -95,7 +102,7 @@ func runInit(name string, trackAll bool) error {
 		return nil
 	}
 
-	opts := source.InstallOpts{TrackAll: trackAll}
+	opts := source.InstallOpts{SettingsPath: settingsPath, TrackAll: trackAll}
 	if err := installer.Install(opts); err != nil {
 		return err
 	}

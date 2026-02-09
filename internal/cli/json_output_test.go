@@ -280,7 +280,7 @@ func TestInitCmdJSON(t *testing.T) {
 	stdout, _ := captureStdoutAndStderr(t, func() {
 		jsonOutput = true
 		defer func() { jsonOutput = false }()
-		if err := runInit("claude-code", false); err != nil {
+		if err := runInit("claude-code", false, ""); err != nil {
 			t.Fatalf("runInit: %v", err)
 		}
 	})

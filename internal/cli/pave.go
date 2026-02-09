@@ -16,6 +16,7 @@ var (
 	paveHook     bool
 	paveAgentsMD bool
 	paveAppend   string
+	paveSettings string
 )
 
 // paveCmd turns alias data into actionable intercepts.
@@ -65,6 +66,7 @@ func init() {
 	paveCmd.Flags().BoolVar(&paveHook, "hook", false, "install PreToolUse intercept hook")
 	paveCmd.Flags().BoolVar(&paveAgentsMD, "agents-md", false, "generate AGENTS.md rules from aliases")
 	paveCmd.Flags().StringVar(&paveAppend, "append", "", "append generated rules to this file (with --agents-md)")
+	paveCmd.Flags().StringVar(&paveSettings, "settings", "", "path to settings file (default: ~/.claude/settings.json)")
 	rootCmd.AddCommand(paveCmd)
 }
 
@@ -74,12 +76,14 @@ const dpPaveCheckCommand = "dp pave-check"
 // runPaveHook installs a PreToolUse hook into ~/.claude/settings.json
 // that runs dp pave-check on every tool call.
 func runPaveHook() error {
-	settingsPath := ""
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("determine home directory: %w", err)
+	settingsPath := paveSettings
+	if settingsPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("determine home directory: %w", err)
+		}
+		settingsPath = filepath.Join(home, ".claude", "settings.json")
 	}
-	settingsPath = filepath.Join(home, ".claude", "settings.json")
 
 	settings, err := source.ReadClaudeSettings(settingsPath)
 	if err != nil {
