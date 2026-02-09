@@ -292,14 +292,15 @@ func TestRecordWithSourceRespectsAllowlist(t *testing.T) {
 	}
 }
 
-func TestRecordUnaffectedByAllowlist(t *testing.T) {
+func TestRecordRespectsAllowlistSameAsIngest(t *testing.T) {
 	resetFlags(t)
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "config.toml")
 	dbFile := filepath.Join(tmpDir, "test.db")
 
-	// Allowlist restricts ingest to Read and Bash only.
-	// "Write" is NOT in the allowlist, but dp record should still work.
+	// Allowlist restricts to Read and Bash only.
+	// "Write" is NOT in the allowlist, so dp record (now an alias
+	// for dp ingest) should also skip it.
 	cfg := &config.Config{TrackTools: []string{"Read", "Bash"}}
 	if err := cfg.SaveTo(cfgPath); err != nil {
 		t.Fatal(err)
@@ -308,7 +309,7 @@ func TestRecordUnaffectedByAllowlist(t *testing.T) {
 	oldCfg, oldDB, oldJSON, oldStdin := configPath, dbPath, jsonOutput, os.Stdin
 	configPath = cfgPath
 	dbPath = dbFile
-	jsonOutput = false
+	jsonOutput = true
 	defer func() {
 		configPath = oldCfg
 		dbPath = oldDB
@@ -316,29 +317,31 @@ func TestRecordUnaffectedByAllowlist(t *testing.T) {
 		os.Stdin = oldStdin
 	}()
 
-	// Desire for tool "Write" — not in the ingest allowlist but should
-	// still be recorded via dp record.
 	pipeStdin(t, `{"tool_name":"Write","error":"unknown tool"}`)
 
-	rootCmd.SetArgs([]string{"record"})
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	// Capture stdout to verify silence.
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"record", "--source", "claude-code"})
+	err := rootCmd.Execute()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	if err != nil {
+		t.Fatalf("expected nil error (silent skip), got: %v", err)
+	}
+	if strings.TrimSpace(buf.String()) != "" {
+		t.Errorf("expected no output for skipped tool, got: %s", buf.String())
 	}
 
-	s, err := store.New(dbFile)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer s.Close()
-
-	desires, err := s.ListDesires(context.Background(), store.ListOpts{})
-	if err != nil {
-		t.Fatalf("list desires: %v", err)
-	}
-	if len(desires) != 1 {
-		t.Fatalf("expected 1 desire, got %d", len(desires))
-	}
-	if desires[0].ToolName != "Write" {
-		t.Errorf("tool_name: got %q, want %q", desires[0].ToolName, "Write")
+	// Database should not have been created.
+	if _, statErr := os.Stat(dbFile); statErr == nil {
+		t.Error("database should not have been created for skipped tool")
 	}
 }
