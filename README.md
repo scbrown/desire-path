@@ -1,17 +1,9 @@
-
 <p align="center">
-<pre align="center">
-     ╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸
-
-        ┏━━━┓
-        ┃ ╱ ┃   ┏━┓┏━╸┏━┓╻┏━┓┏━╸   ┏━┓┏━┓╺┳╸╻ ╻
-        ┃╱  ┃   ┃ ┃┣╸ ┗━┓┃┣┳┛┣╸    ┣━┛┣━┫ ┃ ┣━┫
-        ┗━━━┛   ┗━┛┗━╸┗━┛╹╹┗╸┗━╸   ╹  ╹ ╹ ╹ ╹ ╹
-
-      <i>Where the AI walks, the sidewalk should follow.</i>
-
-     ╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸
-</pre>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.svg">
+    <img alt="desire path" src="docs/assets/banner-dark.svg" width="660">
+  </picture>
 </p>
 
 <p align="center">
