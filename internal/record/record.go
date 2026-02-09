@@ -1,5 +1,10 @@
 // Package record handles parsing and recording of failed tool call data from
 // JSON input into the desire-path store.
+//
+// When a registered source plugin exists for the given source name, Record
+// delegates field extraction to Source.Extract() and maps the resulting Fields
+// to a Desire. Otherwise it falls back to generic JSON parsing with the
+// knownFields map for backward compatibility.
 package record
 
 import (
@@ -11,11 +16,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/scbrown/desire-path/internal/model"
+	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
 )
 
 // knownFields lists the JSON keys that map directly to Desire struct fields.
-// Any other keys in the input JSON are collected into metadata.
+// Any other keys in the input JSON are collected into metadata. This is used
+// only in the fallback path when no source plugin is registered.
 var knownFields = map[string]bool{
 	"id":         true,
 	"tool_name":  true,
@@ -28,32 +35,75 @@ var knownFields = map[string]bool{
 	"metadata":   true,
 }
 
-// Record reads JSON from input, extracts known fields into a Desire, collects
-// unknown fields into metadata, and persists the result via the store.
+// Record reads JSON from input, extracts fields into a Desire, and persists
+// the result via the store.
 //
-// The source parameter overrides any "source" field in the input JSON. If source
-// is empty and the input JSON contains a "source" field, that value is used.
+// When sourceName identifies a registered source plugin, Record delegates
+// extraction to Source.Extract() and maps the universal Fields to a Desire.
+// Otherwise it falls back to generic JSON parsing using the knownFields map.
 //
 // Only tool_name is required. If missing, Record returns an error. UUID and
 // timestamp are generated automatically if not provided in the input.
-func Record(ctx context.Context, s store.Store, input io.Reader, source string) (model.Desire, error) {
+func Record(ctx context.Context, s store.Store, input io.Reader, sourceName string) (model.Desire, error) {
 	raw, err := io.ReadAll(input)
 	if err != nil {
 		return model.Desire{}, fmt.Errorf("reading input: %w", err)
 	}
 
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return model.Desire{}, fmt.Errorf("parsing JSON: %w", err)
-	}
+	var d model.Desire
 
-	d, err := extractDesire(fields, source)
-	if err != nil {
-		return model.Desire{}, err
+	// Use source plugin when available; fall back to generic parsing.
+	if src := source.Get(sourceName); src != nil {
+		fields, err := src.Extract(raw)
+		if err != nil {
+			return model.Desire{}, fmt.Errorf("extracting fields: %w", err)
+		}
+		d, err = fieldsToDesire(fields, sourceName)
+		if err != nil {
+			return model.Desire{}, err
+		}
+	} else {
+		var jsonFields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &jsonFields); err != nil {
+			return model.Desire{}, fmt.Errorf("parsing JSON: %w", err)
+		}
+		d, err = extractDesire(jsonFields, sourceName)
+		if err != nil {
+			return model.Desire{}, err
+		}
 	}
 
 	if err := s.RecordDesire(ctx, d); err != nil {
 		return model.Desire{}, fmt.Errorf("storing desire: %w", err)
+	}
+
+	return d, nil
+}
+
+// fieldsToDesire converts source.Fields into a model.Desire, generating a
+// UUID and timestamp, and marshaling Extra into Metadata.
+func fieldsToDesire(f *source.Fields, sourceName string) (model.Desire, error) {
+	if f.ToolName == "" {
+		return model.Desire{}, fmt.Errorf("missing required field: tool_name")
+	}
+
+	d := model.Desire{
+		ID:        uuid.New().String(),
+		ToolName:  f.ToolName,
+		ToolInput: f.ToolInput,
+		Error:     f.Error,
+		Source:    sourceName,
+		SessionID: f.InstanceID,
+		CWD:       f.CWD,
+		Timestamp: time.Now(),
+	}
+
+	if len(f.Extra) > 0 {
+		meta, err := json.Marshal(f.Extra)
+		if err != nil {
+			return model.Desire{}, fmt.Errorf("marshaling metadata: %w", err)
+		}
+		d.Metadata = meta
 	}
 
 	return d, nil
