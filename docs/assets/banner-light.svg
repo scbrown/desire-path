@@ -11,23 +11,20 @@
   <rect width="660" height="150" rx="10" fill="#ffffff"/>
   <rect x=".5" y=".5" width="659" height="149" rx="10" fill="none" stroke="#d0d7de"/>
 
-  <!-- Logo: "dp" letters drawn as paved roads, desire path cuts through -->
-  <g transform="translate(18, 37)">
-    <!-- "d" as paved road: ascender + left bowl -->
-    <line x1="24" y1="0" x2="24" y2="42" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
-    <path d="M 24,14 C 14,14 4,22 4,28 C 4,36 14,42 24,42" fill="none" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
+  <g transform="translate(24, 37)">
+    <!-- Winding path: d's left bowl (upper, offset high) -->
+    <path d="M 30,6 C 16,6 4,16 4,23 C 4,32 16,40 30,40"
+          fill="none" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
 
-    <!-- "p" as paved road: right bowl + descender -->
-    <line x1="48" y1="14" x2="48" y2="56" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
-    <path d="M 48,14 C 58,14 68,22 68,28 C 68,36 58,42 48,42" fill="none" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
+    <!-- Winding path: p's right bowl (lower, offset low) -->
+    <path d="M 30,34 C 44,34 56,44 56,51 C 56,60 44,68 30,68"
+          fill="none" stroke="#d0d7de" stroke-width="4" stroke-linecap="round"/>
 
-    <!-- Road connecting d and p at midpoint -->
-    <line x1="24" y1="28" x2="48" y2="28" stroke="#d0d7de" stroke-width="3" stroke-linecap="round"/>
-
-    <!-- Desire path: straight diagonal slicing through both letters -->
-    <line x1="4" y1="50" x2="68" y2="6" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="4" cy="50" r="3" fill="url(#g)"/>
-    <circle cx="68" cy="6" r="3" fill="url(#g)"/>
+    <!-- Desire path: the straight vertical line through both -->
+    <line x1="30" y1="0" x2="30" y2="74"
+          stroke="url(#g)" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="30" cy="0" r="3" fill="url(#g)"/>
+    <circle cx="30" cy="74" r="3" fill="url(#g)"/>
   </g>
 
   <!-- DESIRE PATH (figlet small font) -->
