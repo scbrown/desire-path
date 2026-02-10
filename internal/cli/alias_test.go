@@ -13,6 +13,19 @@ import (
 	"github.com/scbrown/desire-path/internal/store"
 )
 
+// resetAliasFlags resets all alias command flags to defaults between tests.
+func resetAliasFlags(t *testing.T) {
+	t.Helper()
+	aliasDelete = false
+	aliasCmd_ = ""
+	aliasFlag = nil
+	aliasReplace = ""
+	aliasTool = ""
+	aliasParam = ""
+	aliasRegex = false
+	aliasMessage = ""
+}
+
 func TestAliasCmdSet(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 	dbPath = db
@@ -328,5 +341,326 @@ func TestAliasesCmdJSON(t *testing.T) {
 	}
 	if aliases[0].From != "read_file" || aliases[0].To != "Read" {
 		t.Errorf("got %s->%s, want read_file->Read", aliases[0].From, aliases[0].To)
+	}
+}
+
+func TestAliasCmdFlagCorrection(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--cmd", "scp", "--flag", "r,R"})
+	if err := rootCmd.Execute(); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("execute: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Rule set:") {
+		t.Errorf("expected rule set confirmation, got: %s", output)
+	}
+
+	// Verify in database.
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "r", "Bash", "command", "scp", "flag")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.From != "r" || alias.To != "R" {
+		t.Errorf("got %s->%s, want r->R", alias.From, alias.To)
+	}
+	if alias.Command != "scp" {
+		t.Errorf("got command %q, want scp", alias.Command)
+	}
+	if alias.MatchKind != "flag" {
+		t.Errorf("got match_kind %q, want flag", alias.MatchKind)
+	}
+}
+
+func TestAliasCmdReplace(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--cmd", "grep", "--replace", "rg", "--message", "Use ripgrep"})
+	if err := rootCmd.Execute(); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("execute: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "grep", "Bash", "command", "grep", "command")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.To != "rg" {
+		t.Errorf("got to=%q, want rg", alias.To)
+	}
+	if alias.Message != "Use ripgrep" {
+		t.Errorf("got message=%q, want 'Use ripgrep'", alias.Message)
+	}
+}
+
+func TestAliasCmdLiteral(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--cmd", "scp", "user@host:", "user@newhost:"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "user@host:", "Bash", "command", "scp", "literal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.To != "user@newhost:" {
+		t.Errorf("got to=%q, want user@newhost:", alias.To)
+	}
+}
+
+func TestAliasCmdToolParam(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--tool", "MyMCP", "--param", "input_path", "/old", "/new"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "/old", "MyMCP", "input_path", "", "literal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.To != "/new" {
+		t.Errorf("got to=%q, want /new", alias.To)
+	}
+}
+
+func TestAliasCmdToolParamRegex(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--tool", "Bash", "--param", "command", "--regex", "curl -k", "curl --cacert cert.pem"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "curl -k", "Bash", "command", "", "regex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.To != "curl --cacert cert.pem" {
+		t.Errorf("got to=%q, want 'curl --cacert cert.pem'", alias.To)
+	}
+}
+
+func TestAliasCmdDeleteFlag(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	// Seed a flag rule.
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "r", To: "R", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "flag",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--delete", "--cmd", "scp", "--flag", "r,R"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	s2, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	aliases, err := s2.GetAliases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliases) != 0 {
+		t.Errorf("expected 0 aliases after delete, got %d", len(aliases))
+	}
+}
+
+func TestAliasCmdValidation(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "cmd and tool mutual exclusion",
+			args: []string{"alias", "--db", db, "--cmd", "scp", "--tool", "Bash", "--param", "command", "a", "b"},
+			want: "mutually exclusive",
+		},
+		{
+			name: "flag without cmd",
+			args: []string{"alias", "--db", db, "--flag", "r,R"},
+			want: "--flag requires --cmd",
+		},
+		{
+			name: "replace without cmd",
+			args: []string{"alias", "--db", db, "--replace", "rg"},
+			want: "--replace requires --cmd",
+		},
+		{
+			name: "regex without tool",
+			args: []string{"alias", "--db", db, "--regex", "a", "b"},
+			want: "--regex requires --tool",
+		},
+		{
+			name: "tool without param",
+			args: []string{"alias", "--db", db, "--tool", "Bash", "a", "b"},
+			want: "--tool and --param must be used together",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetAliasFlags(t)
+			rootCmd.SetArgs(tt.args)
+			err := rootCmd.Execute()
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error %q should contain %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestAliasesListWithRules(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "r", To: "R", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "flag",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+	jsonOutput = false
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"aliases", "--db", db})
+	if err := rootCmd.Execute(); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("execute: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "TYPE") {
+		t.Errorf("expected TYPE column header, got: %s", output)
+	}
+	if !strings.Contains(output, "alias") {
+		t.Errorf("expected 'alias' type, got: %s", output)
+	}
+	if !strings.Contains(output, "flag") {
+		t.Errorf("expected 'flag' type, got: %s", output)
+	}
+	if !strings.Contains(output, "scp") {
+		t.Errorf("expected 'scp' command, got: %s", output)
 	}
 }
