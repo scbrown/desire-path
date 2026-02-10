@@ -24,8 +24,9 @@ Commands for exploring recorded desire paths.
 Commands for resolving tool name mismatches.
 
 - **suggest** - Suggest known tool mappings for a tool name
-- **alias** - Create, update, or delete tool name aliases
-- **aliases** - List all configured aliases
+- **alias** - Create, update, or delete tool name aliases and command correction rules
+- **aliases** - List all configured aliases and rules
+- **pave** - Turn aliases into active tool-call intercepts
 
 ### Configure
 Commands for managing configuration.
@@ -45,8 +46,9 @@ Commands for managing configuration.
 | stats | Show summary statistics |
 | export | Export raw desire or invocation data |
 | suggest | Suggest known tool mappings for a tool name |
-| alias | Create, update, or delete tool name aliases |
-| aliases | List all configured aliases |
+| alias | Create, update, or delete tool name aliases and correction rules |
+| aliases | List all configured aliases and rules |
+| pave | Turn aliases into active tool-call intercepts |
 | config | Show or modify configuration |
 
 ## Global Flags

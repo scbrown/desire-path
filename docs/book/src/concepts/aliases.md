@@ -107,6 +107,65 @@ The AI wants something specific that's part of a broader tool:
 - The concepts don't actually align (forcing a bad mapping creates confusion)
 - You're planning to build the hallucinated tool anyway (let the path data guide development)
 
+## Command Correction Rules
+
+Aliases extend beyond tool names. **Command correction rules** fix mistakes *inside* tool parameters — like wrong CLI flags, deprecated command names, or outdated paths.
+
+### The Problem
+
+AI assistants don't just hallucinate tool names. They also misremember CLI flags:
+
+- `scp -r` when the correct flag is `scp -R`
+- `grep pattern` when you prefer `rg pattern`
+- `curl -k` when you need `curl --cacert cert.pem`
+
+These are the same kind of desire path: the AI's intent is correct, but the specifics are wrong.
+
+### Rule Types
+
+| Type | What It Fixes | Example |
+|------|--------------|---------|
+| Flag | Wrong CLI flag | `-r` → `-R` in `scp` |
+| Command | Wrong command name | `grep` → `rg` |
+| Literal | Wrong string in a command | `user@old:` → `user@new:` |
+| Regex | Pattern-based replacement | `curl -k` → `curl --cacert cert.pem` |
+
+### How They Work
+
+Rules are scoped to a specific command within a pipeline. Given a Bash tool call like:
+
+```
+cat file.txt | scp -rP 22 user@host:/path
+```
+
+A flag rule for `scp` with `-r` → `-R` would:
+
+1. Parse the pipeline into segments: `cat file.txt` and `scp -rP 22 user@host:/path`
+2. Find the segment where the command is `scp`
+3. Locate the `-r` flag within `-rP` (combined flags)
+4. Rewrite to `-RP`: `cat file.txt | scp -RP 22 user@host:/path`
+
+The correction is precise: it only touches the right command and the right flag.
+
+### Creating Rules
+
+```bash
+# Flag correction
+dp alias --cmd scp --flag r R --message "scp uses -R for recursive"
+
+# Command substitution
+dp alias --cmd grep --replace rg
+
+# Literal replacement
+dp alias --cmd scp "user@old:" "user@new:"
+```
+
+### Enforcement
+
+Rules are enforced by `dp pave --hook`, which installs a PreToolUse hook in Claude Code. When a tool call matches a rule, the hook rewrites the parameters before the tool executes. The AI sees a note about the correction in the response.
+
+See [dp pave](../commands/pave.md) for details on the hook mechanism.
+
 ## Aliases as Documentation
 
 Your alias list is a rosetta stone between AI expectations and your actual API. It documents the gap between "what AI assistants naturally try to do" and "what your system actually provides."

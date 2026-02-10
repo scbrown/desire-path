@@ -1,76 +1,134 @@
 # dp alias
 
-Create, update, or delete tool name aliases
+Create, update, or delete tool name aliases and command correction rules.
 
 ## Usage
 
     dp alias <from> <to>
     dp alias --delete <from>
+    dp alias --cmd <name> --flag <old> <new>
+    dp alias --cmd <name> --replace <new>
+    dp alias --cmd <name> <from> <to>
+    dp alias --tool <tool> --param <param> <from> <to>
     dp aliases
 
 ## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| --delete | false | Delete an existing alias |
+| --delete | false | Delete an existing alias or rule |
+| --cmd NAME | | Command name for CLI corrections (implies tool=Bash, param=command) |
+| --flag OLD,NEW | | Flag correction within a command (requires --cmd) |
+| --replace NEW | | Substitute the command itself (requires --cmd) |
+| --tool NAME | | Tool name for parameter corrections (advanced) |
+| --param NAME | | Parameter name to correct (requires --tool) |
+| --regex | false | Treat FROM as a regex pattern (requires --tool/--param) |
+| --message TEXT | | Custom message shown when correction fires |
 
-## Examples
+## Tool Name Aliases
 
-    $ dp alias read_file Read
-    Created alias: read_file -> Read
+Map a hallucinated tool name to the correct one:
 
-    $ dp alias file_read Read
-    Created alias: file_read -> Read
+```bash
+dp alias read_file Read
+dp alias search_files Grep
+dp alias --delete read_file
+```
 
-    $ dp alias read_file ReadFile
-    Updated alias: read_file -> ReadFile (was: Read)
+## Command Flag Corrections
 
-    $ dp alias --delete read_file
-    Deleted alias: read_file
+Fix incorrect CLI flags scoped to a specific command:
 
-    $ dp aliases
-    FROM            TO           CREATED
-    read_file       Read         2026-02-01 09:15:33
-    file_read       Read         2026-02-01 09:16:12
-    grep_search     Grep         2026-02-01 09:17:44
-    search_grep     Grep         2026-02-01 09:18:09
-    edit_document   Edit         2026-02-01 09:19:22
-    write_file      Write        2026-02-01 09:20:15
-    bash_exec       Bash         2026-02-01 09:21:04
-    run_command     Bash         2026-02-01 09:21:55
+```bash
+# scp uses -R (not -r) for recursive
+dp alias --cmd scp --flag r R
 
-    8 aliases configured
+# With a custom message
+dp alias --cmd scp --flag r R --message "scp uses -R for recursive"
+
+# Delete the rule
+dp alias --delete --cmd scp --flag r
+```
+
+When `dp pave --hook` is active, this automatically rewrites `scp -r` to `scp -R` in any Bash tool call. Combined flags are handled too: `-rP 22` becomes `-RP 22`.
+
+## Command Substitution
+
+Replace one command with another:
+
+```bash
+# Use ripgrep instead of grep
+dp alias --cmd grep --replace rg
+
+# With a message
+dp alias --cmd grep --replace rg --message "Use ripgrep instead of grep"
+```
+
+This rewrites `grep -rn pattern .` to `rg -rn pattern .` while leaving other commands in a pipeline untouched.
+
+## Literal Replacement
+
+Replace a literal string within a specific command's context:
+
+```bash
+dp alias --cmd scp "user@old-host:" "user@new-host:" --message "Host migrated"
+```
+
+## Advanced: Tool/Param Corrections
+
+For non-Bash tools or arbitrary parameter corrections:
+
+```bash
+# Correct a path in an MCP tool
+dp alias --tool MyMCPTool --param input_path "/old/path" "/new/path"
+
+# Regex replacement
+dp alias --tool Bash --param command --regex "curl -k" "curl --cacert cert.pem"
+```
+
+## Listing Rules
+
+```bash
+dp aliases
+```
+
+Output:
+
+```
+FROM            TO           TYPE      COMMAND   CREATED
+read_file       Read         alias               2026-02-01 09:15:33
+r               R            flag      scp       2026-02-01 09:16:12
+grep            rg           command   grep      2026-02-01 09:17:44
+```
+
+## Validation
+
+- `--cmd` and `--tool`/`--param` are mutually exclusive
+- `--flag` requires `--cmd`
+- `--replace` requires `--cmd`
+- `--flag` and `--replace` are mutually exclusive
+- `--regex` requires `--tool`/`--param`
+- `--tool` and `--param` must appear together
 
 ## Details
 
-The alias command manages tool name mappings, allowing you to define how incorrect tool names should be resolved to known tools.
+The alias command manages both tool name mappings and command correction rules. Tool name aliases define how incorrect tool names should be resolved. Command correction rules define how parameters should be rewritten when a tool is called.
 
-Aliases are upserted: creating an alias that already exists will update it to the new target. This makes it safe to run alias commands idempotently.
+Aliases and rules are upserted: creating one that already exists updates it. This makes it safe to run commands idempotently.
 
-Multiple incorrect tool names can map to the same known tool. For example, both `read_file` and `file_read` can alias to `Read`.
+Rules are identified by a composite key: `(from, tool, param, command, match_kind)`. This means you can have multiple rules for the same command targeting different flags.
 
-When you create an alias, desire_path uses it immediately in subsequent commands like `dp suggest` and `dp paths`. Existing desire records are not modified, but queries will show the alias mapping.
+When you create rules, they take effect immediately if `dp pave --hook` is installed. The hook checks rules on every tool call and applies corrections transparently.
 
-The `--delete` flag removes an alias permanently. This is useful when cleaning up obsolete mappings or correcting mistakes.
+Common workflow for command corrections:
 
-The `dp aliases` command (plural) lists all configured aliases. It shows:
-- FROM: The incorrect tool name that appears in failure records
-- TO: The known tool name it maps to
-- CREATED: When the alias was created
-
-Common workflow for creating aliases:
-
-1. Run `dp paths` to see the most frequent tool name patterns
-2. For each pattern, run `dp suggest <pattern>` to find the best match
-3. Create aliases for the top patterns: `dp alias <pattern> <match>`
-4. Verify with `dp aliases`
-
-Aliases are stored in the database alongside desire records. They're tied to your database file (default: ~/.dp/desires.db), so different projects can have different alias configurations if they use different databases via `--db`.
+1. Notice the AI keeps using wrong flags (e.g., `scp -r` fails)
+2. Create a rule: `dp alias --cmd scp --flag r R`
+3. Install the hook: `dp pave --hook`
+4. Future `scp -r` calls are automatically corrected to `scp -R`
 
 Best practices:
-- Map to the canonical tool name used by your AI coding tool (e.g., "Read" for Claude Code)
-- Be consistent: if you map `read_file` to `Read`, also map `file_read` to `Read`, not `read`
-- Document your alias strategy if working in a team
-- Review aliases periodically with `dp aliases` to remove obsolete mappings
-
-Aliases make desire_path's analysis commands more useful by normalizing tool names across different failure patterns.
+- Add `--message` to explain *why* the correction exists
+- Use `--cmd` for CLI corrections (most common case)
+- Use `--tool`/`--param` only for MCP or non-Bash tools
+- Review rules with `dp aliases` periodically

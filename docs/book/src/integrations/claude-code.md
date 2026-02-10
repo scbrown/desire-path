@@ -331,6 +331,104 @@ sqlite3 ~/.dp/desires.db "SELECT tool_name, is_error, timestamp FROM invocations
 
 WAL mode keeps reads fast even during writes. Queries are instant up to ~1M records.
 
+## PreToolUse Hook: Active Correction
+
+Beyond recording failures, dp can actively intercept and correct tool calls using the `PreToolUse` hook.
+
+### Setup
+
+```bash
+dp pave --hook
+```
+
+This adds a `PreToolUse` hook to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dp pave-check",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### How It Works
+
+The `PreToolUse` hook fires *before* every tool call. `dp pave-check` reads the JSON payload from stdin and performs two checks:
+
+**1. Tool Name Blocking**
+
+If the tool name matches a tool-name alias (e.g., `read_file` → `Read`), the hook exits with code 2 and writes an error message to stderr. Claude Code blocks the call and shows the message, prompting the AI to use the correct tool name.
+
+**2. Parameter Rewriting**
+
+If the tool name is valid but parameters contain known mistakes, the hook rewrites them via `updatedInput`. For example, if you have a rule `--cmd scp --flag r R`:
+
+Input payload:
+```json
+{
+  "tool_name": "Bash",
+  "tool_input": {"command": "scp -r file.txt host:/"}
+}
+```
+
+Hook output (exit 0):
+```json
+{
+  "hookSpecificOutput": {
+    "permissionDecision": "allow",
+    "updatedInput": {"command": "scp -R file.txt host:/"},
+    "additionalContext": "Corrected: -r → -R"
+  }
+}
+```
+
+Claude Code uses the corrected `command` value transparently. The AI sees the `additionalContext` note explaining what changed.
+
+### Exit Code Protocol
+
+| Exit Code | Meaning | Behavior |
+|-----------|---------|----------|
+| 0 (no output) | Allow as-is | Tool call proceeds unchanged |
+| 0 (with JSON) | Allow with corrections | Tool call proceeds with `updatedInput` |
+| 2 | Block | Tool call is rejected, error shown to AI |
+
+### Fail-Safe Design
+
+The hook is designed to never break your workflow:
+
+- JSON parse errors → allow (don't block on malformed payloads)
+- Database unavailable → allow (don't block if store is down)
+- Rule application errors → allow (skip broken rules)
+- Timeout (3s) → Claude Code kills the hook and proceeds
+
+### Creating Correction Rules
+
+See [dp alias](../commands/alias.md) for the full flag reference. Quick examples:
+
+```bash
+# Flag correction
+dp alias --cmd scp --flag r R
+
+# Command substitution
+dp alias --cmd grep --replace rg
+
+# Regex replacement
+dp alias --tool Bash --param command --regex "curl -k" "curl --cacert cert.pem"
+```
+
+See [dp pave](../commands/pave.md) for more details on the hook mechanism and troubleshooting.
+
 ## Next Steps
 
 - [Configuration](../configuration.md): Customize database path, known tools, etc.

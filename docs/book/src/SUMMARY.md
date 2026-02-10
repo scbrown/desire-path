@@ -34,6 +34,7 @@
 - [dp export](./commands/export.md)
 - [dp suggest](./commands/suggest.md)
 - [dp alias](./commands/alias.md)
+- [dp pave](./commands/pave.md)
 - [dp config](./commands/config.md)
 
 ---
