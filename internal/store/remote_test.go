@@ -70,18 +70,15 @@ func registerRoutes(mux *http.ServeMux, s Store) {
 		json.NewEncoder(w).Encode(paths)
 	})
 	mux.HandleFunc("POST /api/v1/aliases", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			From string `json:"from"`
-			To   string `json:"to"`
-		}
-		json.NewDecoder(r.Body).Decode(&req)
-		if err := s.SetAlias(r.Context(), req.From, req.To); err != nil {
+		var alias model.Alias
+		json.NewDecoder(r.Body).Decode(&alias)
+		if err := s.SetAlias(r.Context(), alias); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
-		json.NewEncoder(w).Encode(req)
+		json.NewEncoder(w).Encode(alias)
 	})
 	mux.HandleFunc("GET /api/v1/aliases", func(w http.ResponseWriter, r *http.Request) {
 		aliases, err := s.GetAliases(r.Context())
@@ -97,7 +94,7 @@ func registerRoutes(mux *http.ServeMux, s Store) {
 	})
 	mux.HandleFunc("GET /api/v1/aliases/{from}", func(w http.ResponseWriter, r *http.Request) {
 		from := r.PathValue("from")
-		alias, err := s.GetAlias(r.Context(), from)
+		alias, err := s.GetAlias(r.Context(), from, "", "", "", "")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -112,7 +109,7 @@ func registerRoutes(mux *http.ServeMux, s Store) {
 	})
 	mux.HandleFunc("DELETE /api/v1/aliases/{from}", func(w http.ResponseWriter, r *http.Request) {
 		from := r.PathValue("from")
-		deleted, err := s.DeleteAlias(r.Context(), from)
+		deleted, err := s.DeleteAlias(r.Context(), from, "", "", "", "")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -243,7 +240,7 @@ func TestRemoteAliases(t *testing.T) {
 	ctx := context.Background()
 
 	// Set.
-	if err := remote.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := remote.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("set alias: %v", err)
 	}
 
@@ -260,7 +257,7 @@ func TestRemoteAliases(t *testing.T) {
 	}
 
 	// Delete.
-	deleted, err := remote.DeleteAlias(ctx, "read_file")
+	deleted, err := remote.DeleteAlias(ctx, "read_file", "", "", "", "")
 	if err != nil {
 		t.Fatalf("delete alias: %v", err)
 	}
@@ -269,7 +266,7 @@ func TestRemoteAliases(t *testing.T) {
 	}
 
 	// Delete nonexistent.
-	deleted, err = remote.DeleteAlias(ctx, "nonexistent")
+	deleted, err = remote.DeleteAlias(ctx, "nonexistent", "", "", "", "")
 	if err != nil {
 		t.Fatalf("delete nonexistent: %v", err)
 	}
@@ -283,7 +280,7 @@ func TestRemoteGetAlias(t *testing.T) {
 	ctx := context.Background()
 
 	// Get nonexistent.
-	alias, err := remote.GetAlias(ctx, "nonexistent")
+	alias, err := remote.GetAlias(ctx, "nonexistent", "", "", "", "")
 	if err != nil {
 		t.Fatalf("get nonexistent: %v", err)
 	}
@@ -292,10 +289,10 @@ func TestRemoteGetAlias(t *testing.T) {
 	}
 
 	// Set then get.
-	if err := remote.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := remote.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("set alias: %v", err)
 	}
-	alias, err = remote.GetAlias(ctx, "read_file")
+	alias, err = remote.GetAlias(ctx, "read_file", "", "", "", "")
 	if err != nil {
 		t.Fatalf("get alias: %v", err)
 	}

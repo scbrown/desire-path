@@ -55,7 +55,7 @@ func runPaveCheck(r io.Reader) error {
 	}
 	defer s.Close()
 
-	alias, err := s.GetAlias(context.Background(), payload.ToolName)
+	alias, err := s.GetAlias(context.Background(), payload.ToolName, "", "", "", "")
 	if err != nil {
 		// Lookup error → allow the call.
 		return nil

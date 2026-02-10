@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/store"
 )
 
@@ -20,7 +21,7 @@ func TestPaveCheckMatchingAlias(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -39,7 +40,7 @@ func TestPaveCheckMatchingAlias(t *testing.T) {
 	}
 	defer s2.Close()
 
-	alias, err := s2.GetAlias(context.Background(), "read_file")
+	alias, err := s2.GetAlias(context.Background(), "read_file", "", "", "", "")
 	if err != nil {
 		t.Fatalf("get alias: %v", err)
 	}
@@ -126,10 +127,10 @@ func TestPaveAgentsMD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "search_files", "Grep"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "search_files", To: "Grep"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -178,7 +179,7 @@ func TestPaveAgentsMDAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "run_tests", "Bash"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "run_tests", To: "Bash"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -237,7 +238,7 @@ func TestPaveAgentsMDJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

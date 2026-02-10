@@ -102,7 +102,7 @@ func TestAliasCmdDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -212,10 +212,10 @@ func TestAliasesCmdTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "write_file", "Write"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "write_file", To: "Write"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -293,7 +293,7 @@ func TestAliasesCmdJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

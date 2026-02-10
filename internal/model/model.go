@@ -30,11 +30,28 @@ type Path struct {
 	AliasTo   string    `json:"alias_to,omitempty"`
 }
 
-// Alias maps a hallucinated tool name to a real tool or command.
+// Alias maps a hallucinated tool name to a real tool, or defines a parameter
+// correction rule scoped to a specific tool and parameter.
+//
+// When Tool and Param are empty, this is a tool-name alias (original behavior):
+// the From pattern matches against the tool_name field and blocks with exit 2.
+//
+// When Tool and Param are set, this is a parameter correction rule: it matches
+// against a specific parameter value within calls to that tool.
 type Alias struct {
 	From      string    `json:"from"`
 	To        string    `json:"to"`
+	Tool      string    `json:"tool,omitempty"`       // target tool ("" = tool-name alias)
+	Param     string    `json:"param,omitempty"`      // target parameter
+	Command   string    `json:"command,omitempty"`    // target CLI command (e.g., "scp")
+	MatchKind string    `json:"match_kind,omitempty"` // "flag", "literal", "command", "regex"
+	Message   string    `json:"message,omitempty"`    // custom explanation
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// IsToolNameAlias returns true if this alias is a simple tool-name mapping.
+func (a Alias) IsToolNameAlias() bool {
+	return a.Tool == "" && a.Param == ""
 }
 
 // Invocation represents a single tool invocation from any source plugin.

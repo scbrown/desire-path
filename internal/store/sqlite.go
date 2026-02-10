@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 // SQLiteStore implements Store using a local SQLite database.
 type SQLiteStore struct {
@@ -72,6 +72,12 @@ func (s *SQLiteStore) migrate() error {
 
 	if ver < 2 {
 		if err := s.migrateV2(); err != nil {
+			return err
+		}
+	}
+
+	if ver < 3 {
+		if err := s.migrateV3(); err != nil {
 			return err
 		}
 	}
@@ -134,6 +140,35 @@ func (s *SQLiteStore) migrateV2() error {
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate v2: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) migrateV3() error {
+	stmts := []string{
+		// Recreate aliases table with composite PK and new columns.
+		`CREATE TABLE IF NOT EXISTS aliases_v3 (
+			from_name  TEXT NOT NULL,
+			to_name    TEXT NOT NULL,
+			tool       TEXT NOT NULL DEFAULT '',
+			param      TEXT NOT NULL DEFAULT '',
+			command    TEXT NOT NULL DEFAULT '',
+			match_kind TEXT NOT NULL DEFAULT '',
+			message    TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (from_name, tool, param, command, match_kind)
+		)`,
+		`INSERT OR IGNORE INTO aliases_v3 (from_name, to_name, tool, param, command, match_kind, message, created_at)
+			SELECT from_name, to_name, '', '', '', '', '', created_at FROM aliases`,
+		`DROP TABLE aliases`,
+		`ALTER TABLE aliases_v3 RENAME TO aliases`,
+		`CREATE INDEX IF NOT EXISTS idx_aliases_tool_command ON aliases(tool, command)`,
+		`UPDATE schema_version SET version = 3`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v3: %w", err)
 		}
 	}
 	return nil
@@ -223,7 +258,7 @@ func (s *SQLiteStore) GetPaths(ctx context.Context, opts PathOpts) ([]model.Path
 		MAX(d.timestamp) as last_seen,
 		a.to_name
 	FROM desires d
-	LEFT JOIN aliases a ON a.from_name = d.tool_name`
+	LEFT JOIN aliases a ON a.from_name = d.tool_name AND a.tool = '' AND a.param = ''`
 
 	var args []any
 	if !opts.Since.IsZero() {
@@ -260,11 +295,13 @@ func (s *SQLiteStore) GetPaths(ctx context.Context, opts PathOpts) ([]model.Path
 	return paths, rows.Err()
 }
 
-// SetAlias creates or updates a mapping from a hallucinated tool name to a real one.
-func (s *SQLiteStore) SetAlias(ctx context.Context, from, to string) error {
+// SetAlias creates or updates an alias or parameter correction rule.
+func (s *SQLiteStore) SetAlias(ctx context.Context, a model.Alias) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO aliases (from_name, to_name, created_at) VALUES (?, ?, ?)`,
-		from, to, time.Now().UTC().Format(time.RFC3339Nano),
+		`INSERT OR REPLACE INTO aliases (from_name, to_name, tool, param, command, match_kind, message, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.From, a.To, a.Tool, a.Param, a.Command, a.MatchKind, a.Message,
+		time.Now().UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return fmt.Errorf("set alias: %w", err)
@@ -272,13 +309,15 @@ func (s *SQLiteStore) SetAlias(ctx context.Context, from, to string) error {
 	return nil
 }
 
-// GetAlias returns a single alias by its from_name, or nil if not found.
-func (s *SQLiteStore) GetAlias(ctx context.Context, from string) (*model.Alias, error) {
+// GetAlias returns a single alias by its composite key, or nil if not found.
+func (s *SQLiteStore) GetAlias(ctx context.Context, from, tool, param, command, matchKind string) (*model.Alias, error) {
 	var a model.Alias
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT from_name, to_name, created_at FROM aliases WHERE from_name = ?", from,
-	).Scan(&a.From, &a.To, &createdAt)
+		`SELECT from_name, to_name, tool, param, command, match_kind, message, created_at
+		 FROM aliases WHERE from_name = ? AND tool = ? AND param = ? AND command = ? AND match_kind = ?`,
+		from, tool, param, command, matchKind,
+	).Scan(&a.From, &a.To, &a.Tool, &a.Param, &a.Command, &a.MatchKind, &a.Message, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -289,10 +328,11 @@ func (s *SQLiteStore) GetAlias(ctx context.Context, from string) (*model.Alias, 
 	return &a, nil
 }
 
-// GetAliases returns all configured tool name aliases.
+// GetAliases returns all configured aliases and parameter correction rules.
 func (s *SQLiteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT from_name, to_name, created_at FROM aliases ORDER BY from_name")
+		`SELECT from_name, to_name, tool, param, command, match_kind, message, created_at
+		 FROM aliases ORDER BY tool, command, param, from_name`)
 	if err != nil {
 		return nil, fmt.Errorf("get aliases: %w", err)
 	}
@@ -302,7 +342,7 @@ func (s *SQLiteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	for rows.Next() {
 		var a model.Alias
 		var createdAt string
-		if err := rows.Scan(&a.From, &a.To, &createdAt); err != nil {
+		if err := rows.Scan(&a.From, &a.To, &a.Tool, &a.Param, &a.Command, &a.MatchKind, &a.Message, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan alias: %w", err)
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
@@ -311,9 +351,11 @@ func (s *SQLiteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	return aliases, rows.Err()
 }
 
-// DeleteAlias removes an alias by its from_name. Returns true if an alias was deleted.
-func (s *SQLiteStore) DeleteAlias(ctx context.Context, from string) (bool, error) {
-	res, err := s.db.ExecContext(ctx, "DELETE FROM aliases WHERE from_name = ?", from)
+// DeleteAlias removes an alias by its composite key. Returns true if deleted.
+func (s *SQLiteStore) DeleteAlias(ctx context.Context, from, tool, param, command, matchKind string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM aliases WHERE from_name = ? AND tool = ? AND param = ? AND command = ? AND match_kind = ?`,
+		from, tool, param, command, matchKind)
 	if err != nil {
 		return false, fmt.Errorf("delete alias: %w", err)
 	}
@@ -322,6 +364,29 @@ func (s *SQLiteStore) DeleteAlias(ctx context.Context, from string) (bool, error
 		return false, fmt.Errorf("rows affected: %w", err)
 	}
 	return n > 0, nil
+}
+
+// GetRulesForTool returns all parameter correction rules for a specific tool.
+func (s *SQLiteStore) GetRulesForTool(ctx context.Context, tool string) ([]model.Alias, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT from_name, to_name, tool, param, command, match_kind, message, created_at
+		 FROM aliases WHERE tool = ? ORDER BY command, param, from_name`, tool)
+	if err != nil {
+		return nil, fmt.Errorf("get rules for tool: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []model.Alias
+	for rows.Next() {
+		var a model.Alias
+		var createdAt string
+		if err := rows.Scan(&a.From, &a.To, &a.Tool, &a.Param, &a.Command, &a.MatchKind, &a.Message, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan rule: %w", err)
+		}
+		a.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		rules = append(rules, a)
+	}
+	return rules, rows.Err()
 }
 
 // Stats returns summary statistics about stored desires.
@@ -457,7 +522,7 @@ func (s *SQLiteStore) InspectPath(ctx context.Context, opts InspectOpts) (*Inspe
 	if !hasWildcard {
 		var aliasTo sql.NullString
 		_ = s.db.QueryRowContext(ctx,
-			"SELECT to_name FROM aliases WHERE from_name = ?", opts.Pattern,
+			"SELECT to_name FROM aliases WHERE from_name = ? AND tool = '' AND param = ''", opts.Pattern,
 		).Scan(&aliasTo)
 		if aliasTo.Valid {
 			result.AliasTo = aliasTo.String

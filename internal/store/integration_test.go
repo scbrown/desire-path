@@ -151,7 +151,7 @@ func TestRecordListPathsWithAliasRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -382,7 +382,7 @@ func TestEmptyDBAllOperations(t *testing.T) {
 	}
 
 	// DeleteAlias on empty DB.
-	deleted, err := s.DeleteAlias(ctx, "nonexistent")
+	deleted, err := s.DeleteAlias(ctx, "nonexistent", "", "", "", "")
 	if err != nil {
 		t.Fatalf("DeleteAlias: %v", err)
 	}

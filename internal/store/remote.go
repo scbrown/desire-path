@@ -99,13 +99,28 @@ func (r *RemoteStore) GetPaths(ctx context.Context, opts PathOpts) ([]model.Path
 	return paths, nil
 }
 
-func (r *RemoteStore) SetAlias(ctx context.Context, from, to string) error {
-	body := map[string]string{"from": from, "to": to}
-	return r.postJSON(ctx, "/api/v1/aliases", body, nil)
+func (r *RemoteStore) SetAlias(ctx context.Context, a model.Alias) error {
+	return r.postJSON(ctx, "/api/v1/aliases", a, nil)
 }
 
-func (r *RemoteStore) GetAlias(ctx context.Context, from string) (*model.Alias, error) {
+func (r *RemoteStore) GetAlias(ctx context.Context, from, tool, param, command, matchKind string) (*model.Alias, error) {
+	q := url.Values{}
+	if tool != "" {
+		q.Set("tool", tool)
+	}
+	if param != "" {
+		q.Set("param", param)
+	}
+	if command != "" {
+		q.Set("command", command)
+	}
+	if matchKind != "" {
+		q.Set("match_kind", matchKind)
+	}
 	u := r.baseURL + "/api/v1/aliases/" + url.PathEscape(from)
+	if len(q) > 0 {
+		u += "?" + q.Encode()
+	}
 	var lastErr error
 	for attempt := range maxRetries {
 		if attempt > 0 {
@@ -157,8 +172,24 @@ func (r *RemoteStore) GetAliases(ctx context.Context) ([]model.Alias, error) {
 	return aliases, nil
 }
 
-func (r *RemoteStore) DeleteAlias(ctx context.Context, from string) (bool, error) {
+func (r *RemoteStore) DeleteAlias(ctx context.Context, from, tool, param, command, matchKind string) (bool, error) {
+	q := url.Values{}
+	if tool != "" {
+		q.Set("tool", tool)
+	}
+	if param != "" {
+		q.Set("param", param)
+	}
+	if command != "" {
+		q.Set("command", command)
+	}
+	if matchKind != "" {
+		q.Set("match_kind", matchKind)
+	}
 	u := r.baseURL + "/api/v1/aliases/" + url.PathEscape(from)
+	if len(q) > 0 {
+		u += "?" + q.Encode()
+	}
 	var lastErr error
 	for attempt := range maxRetries {
 		if attempt > 0 {
@@ -195,6 +226,15 @@ func (r *RemoteStore) DeleteAlias(ctx context.Context, from string) (bool, error
 		return true, nil
 	}
 	return false, fmt.Errorf("remote delete alias (after %d retries): %w", maxRetries, lastErr)
+}
+
+func (r *RemoteStore) GetRulesForTool(ctx context.Context, tool string) ([]model.Alias, error) {
+	q := url.Values{"tool": {tool}}
+	var rules []model.Alias
+	if err := r.getJSON(ctx, "/api/v1/aliases/rules", q, &rules); err != nil {
+		return nil, err
+	}
+	return rules, nil
 }
 
 func (r *RemoteStore) Stats(ctx context.Context) (Stats, error) {

@@ -37,6 +37,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/paths", s.handleGetPaths)
 	s.mux.HandleFunc("POST /api/v1/aliases", s.handleSetAlias)
 	s.mux.HandleFunc("GET /api/v1/aliases", s.handleGetAliases)
+	s.mux.HandleFunc("GET /api/v1/aliases/rules", s.handleGetRulesForTool)
 	s.mux.HandleFunc("GET /api/v1/aliases/{from}", s.handleGetAlias)
 	s.mux.HandleFunc("DELETE /api/v1/aliases/{from}", s.handleDeleteAlias)
 	s.mux.HandleFunc("GET /api/v1/stats", s.handleStats)
@@ -152,23 +153,20 @@ func (s *Server) handleGetPaths(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetAlias(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		From string `json:"from"`
-		To   string `json:"to"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var alias model.Alias
+	if err := json.NewDecoder(r.Body).Decode(&alias); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body: %v", err)
 		return
 	}
-	if req.From == "" || req.To == "" {
+	if alias.From == "" || alias.To == "" {
 		writeErr(w, http.StatusBadRequest, "both 'from' and 'to' fields are required")
 		return
 	}
-	if err := s.store.SetAlias(r.Context(), req.From, req.To); err != nil {
+	if err := s.store.SetAlias(r.Context(), alias); err != nil {
 		writeErr(w, http.StatusInternalServerError, "setting alias: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, req)
+	writeJSON(w, http.StatusCreated, alias)
 }
 
 func (s *Server) handleGetAliases(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +187,11 @@ func (s *Server) handleGetAlias(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "alias name is required")
 		return
 	}
-	alias, err := s.store.GetAlias(r.Context(), from)
+	tool := r.URL.Query().Get("tool")
+	param := r.URL.Query().Get("param")
+	command := r.URL.Query().Get("command")
+	matchKind := r.URL.Query().Get("match_kind")
+	alias, err := s.store.GetAlias(r.Context(), from, tool, param, command, matchKind)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "getting alias: %v", err)
 		return
@@ -207,7 +209,11 @@ func (s *Server) handleDeleteAlias(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "alias name is required")
 		return
 	}
-	deleted, err := s.store.DeleteAlias(r.Context(), from)
+	tool := r.URL.Query().Get("tool")
+	param := r.URL.Query().Get("param")
+	command := r.URL.Query().Get("command")
+	matchKind := r.URL.Query().Get("match_kind")
+	deleted, err := s.store.DeleteAlias(r.Context(), from, tool, param, command, matchKind)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "deleting alias: %v", err)
 		return
@@ -217,6 +223,23 @@ func (s *Server) handleDeleteAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (s *Server) handleGetRulesForTool(w http.ResponseWriter, r *http.Request) {
+	tool := r.URL.Query().Get("tool")
+	if tool == "" {
+		writeErr(w, http.StatusBadRequest, "tool query parameter is required")
+		return
+	}
+	rules, err := s.store.GetRulesForTool(r.Context(), tool)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "getting rules: %v", err)
+		return
+	}
+	if rules == nil {
+		rules = []model.Alias{}
+	}
+	writeJSON(w, http.StatusOK, rules)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

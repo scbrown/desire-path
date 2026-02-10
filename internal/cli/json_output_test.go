@@ -150,7 +150,7 @@ func TestAliasCmdDeleteJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

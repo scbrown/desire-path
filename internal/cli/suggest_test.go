@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/scbrown/desire-path/internal/analyze"
+	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/store"
 )
 
@@ -94,7 +95,7 @@ func TestSuggestCmdWithAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 	s.Close()

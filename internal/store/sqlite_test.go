@@ -261,7 +261,7 @@ func TestGetPathsWithAlias(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RecordDesire: %v", err)
 	}
-	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 
@@ -281,10 +281,10 @@ func TestSetAliasUpsert(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	if err := s.SetAlias(ctx, "foo", "bar"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "foo", To: "bar"}); err != nil {
 		t.Fatalf("first SetAlias: %v", err)
 	}
-	if err := s.SetAlias(ctx, "foo", "baz"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "foo", To: "baz"}); err != nil {
 		t.Fatalf("second SetAlias: %v", err)
 	}
 
@@ -304,10 +304,10 @@ func TestGetAliases(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
-	if err := s.SetAlias(ctx, "write_file", "Write"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "write_file", To: "Write"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 
@@ -601,7 +601,7 @@ func TestSetAliasTimestamp(t *testing.T) {
 	ctx := context.Background()
 
 	before := time.Now().UTC()
-	if err := s.SetAlias(ctx, "hallucinated", "real_tool"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "hallucinated", To: "real_tool"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 	after := time.Now().UTC()
@@ -783,11 +783,11 @@ func TestDeleteAlias(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 
-	deleted, err := s.DeleteAlias(ctx, "read_file")
+	deleted, err := s.DeleteAlias(ctx, "read_file", "", "", "", "")
 	if err != nil {
 		t.Fatalf("DeleteAlias: %v", err)
 	}
@@ -808,11 +808,11 @@ func TestGetAlias(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 
-	alias, err := s.GetAlias(ctx, "read_file")
+	alias, err := s.GetAlias(ctx, "read_file", "", "", "", "")
 	if err != nil {
 		t.Fatalf("GetAlias: %v", err)
 	}
@@ -828,7 +828,7 @@ func TestGetAliasNotFound(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	alias, err := s.GetAlias(ctx, "nonexistent")
+	alias, err := s.GetAlias(ctx, "nonexistent", "", "", "", "")
 	if err != nil {
 		t.Fatalf("GetAlias: %v", err)
 	}
@@ -841,7 +841,7 @@ func TestDeleteAliasNotFound(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	deleted, err := s.DeleteAlias(ctx, "nonexistent")
+	deleted, err := s.DeleteAlias(ctx, "nonexistent", "", "", "", "")
 	if err != nil {
 		t.Fatalf("DeleteAlias: %v", err)
 	}
@@ -944,7 +944,7 @@ func TestInspectPathWithAlias(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RecordDesire: %v", err)
 	}
-	if err := s.SetAlias(ctx, "read_file", "Read"); err != nil {
+	if err := s.SetAlias(ctx, model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 

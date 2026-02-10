@@ -19,17 +19,22 @@ type Store interface {
 	// GetPaths returns aggregated desire patterns ranked by frequency.
 	GetPaths(ctx context.Context, opts PathOpts) ([]model.Path, error)
 
-	// SetAlias creates or updates a mapping from a hallucinated tool name to a real one.
-	SetAlias(ctx context.Context, from, to string) error
+	// SetAlias creates or updates an alias or parameter correction rule.
+	SetAlias(ctx context.Context, alias model.Alias) error
 
-	// GetAlias returns a single alias by its from_name, or nil if not found.
-	GetAlias(ctx context.Context, from string) (*model.Alias, error)
+	// GetAlias returns a single alias by its composite key, or nil if not found.
+	// For tool-name aliases, pass empty strings for tool, param, command, matchKind.
+	GetAlias(ctx context.Context, from, tool, param, command, matchKind string) (*model.Alias, error)
 
-	// GetAliases returns all configured tool name aliases.
+	// GetAliases returns all configured aliases and parameter correction rules.
 	GetAliases(ctx context.Context) ([]model.Alias, error)
 
-	// DeleteAlias removes an alias by its from_name. Returns true if an alias was deleted.
-	DeleteAlias(ctx context.Context, from string) (bool, error)
+	// DeleteAlias removes an alias by its composite key. Returns true if deleted.
+	DeleteAlias(ctx context.Context, from, tool, param, command, matchKind string) (bool, error)
+
+	// GetRulesForTool returns all parameter correction rules for a specific tool.
+	// Only returns rules where Tool is non-empty (not tool-name aliases).
+	GetRulesForTool(ctx context.Context, tool string) ([]model.Alias, error)
 
 	// Stats returns summary statistics about stored desires.
 	Stats(ctx context.Context) (Stats, error)

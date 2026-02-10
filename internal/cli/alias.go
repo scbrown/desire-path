@@ -67,7 +67,8 @@ func setAlias(from, to string) error {
 	}
 	defer s.Close()
 
-	if err := s.SetAlias(context.Background(), from, to); err != nil {
+	a := model.Alias{From: from, To: to}
+	if err := s.SetAlias(context.Background(), a); err != nil {
 		return fmt.Errorf("set alias: %w", err)
 	}
 
@@ -87,7 +88,7 @@ func deleteAlias(from string) error {
 	}
 	defer s.Close()
 
-	deleted, err := s.DeleteAlias(context.Background(), from)
+	deleted, err := s.DeleteAlias(context.Background(), from, "", "", "", "")
 	if err != nil {
 		return fmt.Errorf("delete alias: %w", err)
 	}

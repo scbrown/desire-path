@@ -162,7 +162,7 @@ func TestInspectCmdWithAlias(t *testing.T) {
 		t.Fatalf("store.New: %v", err)
 	}
 	seedInspectDesires(t, s)
-	if err := s.SetAlias(context.Background(), "read_file", "Read"); err != nil {
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
 		t.Fatalf("SetAlias: %v", err)
 	}
 	s.Close()
