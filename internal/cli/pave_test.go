@@ -318,6 +318,84 @@ func TestPaveAgentsMDNoAliases(t *testing.T) {
 	}
 }
 
+func TestPaveAgentsMDMixed(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	// Seed a tool-name alias and command correction rules.
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "r", To: "R", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "flag",
+		Message: "scp uses -R for recursive",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "grep", To: "rg", Tool: "Bash", Param: "command", Command: "grep", MatchKind: "command",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+	jsonOutput = false
+	paveHook = false
+	paveAgentsMD = true
+	paveAppend = ""
+	defer func() { paveAgentsMD = false }()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"pave", "--db", db, "--agents-md"})
+	if err := rootCmd.Execute(); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("execute: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// Tool name section.
+	if !strings.Contains(output, "# Tool Name Corrections") {
+		t.Errorf("expected tool name header, got: %s", output)
+	}
+	if !strings.Contains(output, "Do NOT call `read_file`. Use `Read` instead.") {
+		t.Errorf("expected read_file rule, got: %s", output)
+	}
+
+	// Command corrections section.
+	if !strings.Contains(output, "# Command Corrections") {
+		t.Errorf("expected command corrections header, got: %s", output)
+	}
+	if !strings.Contains(output, "## scp") {
+		t.Errorf("expected scp section header, got: %s", output)
+	}
+	if !strings.Contains(output, "Flag `-r` should be `-R`") {
+		t.Errorf("expected flag correction, got: %s", output)
+	}
+	if !strings.Contains(output, "scp uses -R for recursive") {
+		t.Errorf("expected custom message, got: %s", output)
+	}
+	if !strings.Contains(output, "## grep → rg") {
+		t.Errorf("expected grep→rg header, got: %s", output)
+	}
+	if !strings.Contains(output, "Use `rg` instead of `grep`") {
+		t.Errorf("expected command substitution rule, got: %s", output)
+	}
+}
+
 func TestPaveNoFlags(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 	dbPath = db
