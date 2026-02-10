@@ -362,3 +362,351 @@ func TestPaveHookInstall(t *testing.T) {
 		t.Fatalf("pave-check help: %v", err)
 	}
 }
+
+func TestPaveCheckFlagCorrection(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	// Seed a flag correction rule: scp -r → -R
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "r", To: "R", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "flag",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"scp -r file.txt host:/"}}`
+	stdin := strings.NewReader(payload)
+
+	// Capture stdout to check updatedInput.
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if output == "" {
+		t.Fatal("expected JSON output with updatedInput, got empty")
+	}
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal output: %v\noutput: %s", err, output)
+	}
+
+	if result.HookSpecificOutput.PermissionDecision != "allow" {
+		t.Errorf("expected permissionDecision=allow, got %q", result.HookSpecificOutput.PermissionDecision)
+	}
+
+	corrected, ok := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !ok {
+		t.Fatalf("expected command in updatedInput, got: %v", result.HookSpecificOutput.UpdatedInput)
+	}
+	if !strings.Contains(corrected, "-R") {
+		t.Errorf("expected corrected command to contain -R, got: %s", corrected)
+	}
+	if strings.Contains(corrected, "-r") {
+		t.Errorf("expected -r to be replaced, got: %s", corrected)
+	}
+}
+
+func TestPaveCheckCombinedFlagCorrection(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "r", To: "R", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "flag",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"scp -rP 22 file host:/"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !strings.Contains(corrected, "-RP") {
+		t.Errorf("expected -RP in corrected command, got: %s", corrected)
+	}
+}
+
+func TestPaveCheckCommandSubstitution(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "grep", To: "rg", Tool: "Bash", Param: "command", Command: "grep", MatchKind: "command",
+		Message: "Use ripgrep instead of grep",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"grep -rn pattern ."}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !strings.HasPrefix(corrected, "rg ") {
+		t.Errorf("expected command to start with 'rg ', got: %s", corrected)
+	}
+	if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "Use ripgrep") {
+		t.Errorf("expected custom message in context, got: %s", result.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+func TestPaveCheckPipeScoping(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "grep", To: "rg", Tool: "Bash", Param: "command", Command: "grep", MatchKind: "command",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	// Only grep should be replaced, not cat.
+	payload := `{"tool_name":"Bash","tool_input":{"command":"cat file | grep pattern"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !strings.Contains(corrected, "cat file") {
+		t.Errorf("cat should be unchanged, got: %s", corrected)
+	}
+	if !strings.Contains(corrected, "rg pattern") {
+		t.Errorf("grep should be replaced with rg, got: %s", corrected)
+	}
+}
+
+func TestPaveCheckRegexRule(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: `curl\s+-k\b`, To: "curl --cacert /etc/ssl/cert.pem",
+		Tool: "Bash", Param: "command", MatchKind: "regex",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"curl -k https://example.com"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !strings.Contains(corrected, "--cacert") {
+		t.Errorf("expected --cacert in corrected command, got: %s", corrected)
+	}
+}
+
+func TestPaveCheckNoRulesMatch(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rule for scp, but we're sending an ls command.
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "r", To: "R", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "flag",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"ls -la /tmp"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// No corrections → no output.
+	if output != "" {
+		t.Errorf("expected no output when no rules match, got: %s", output)
+	}
+}
+
+func TestPaveCheckLiteralReplace(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "user@old:", To: "user@new:", Tool: "Bash", Param: "command", Command: "scp", MatchKind: "literal",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"scp file.txt user@old:/tmp/"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !strings.Contains(corrected, "user@new:") {
+		t.Errorf("expected user@new: in corrected command, got: %s", corrected)
+	}
+	if strings.Contains(corrected, "user@old:") {
+		t.Errorf("expected user@old: to be replaced, got: %s", corrected)
+	}
+}
