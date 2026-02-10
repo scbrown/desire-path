@@ -1,6 +1,7 @@
 package source
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -167,9 +168,10 @@ type claudeHookEntry struct {
 
 // claudeHookInner represents the inner hook command definition.
 type claudeHookInner struct {
-	Type    string `json:"type"`
-	Command string `json:"command"`
-	Timeout int    `json:"timeout"`
+	Type          string `json:"type"`
+	Command       string `json:"command"`
+	Timeout       int    `json:"timeout,omitempty"`
+	StatusMessage string `json:"statusMessage,omitempty"`
 }
 
 // dpHookCommand is the canonical command installed for both hook events.
@@ -208,7 +210,7 @@ func installClaudeHooks(settingsPath string) error {
 		if err != nil {
 			return err
 		}
-		hooksJSON, err := json.Marshal(hooks)
+		hooksJSON, err := marshalJSONNoEscape(hooks)
 		if err != nil {
 			return fmt.Errorf("marshal hooks: %w", err)
 		}
@@ -262,7 +264,7 @@ func mergeHookEvent(settings claudeSettings, eventName string, dpHook claudeHook
 	}
 
 	entries = append(entries, dpHook)
-	entriesJSON, err := json.Marshal(entries)
+	entriesJSON, err := marshalJSONNoEscape(entries)
 	if err != nil {
 		return nil, fmt.Errorf("marshal %s: %w", eventName, err)
 	}
@@ -305,7 +307,7 @@ func MergeClaudeHook(settings claudeSettings, event, command string, timeout int
 	if err != nil {
 		return err
 	}
-	hooksJSON, err := json.Marshal(hooks)
+	hooksJSON, err := marshalJSONNoEscape(hooks)
 	if err != nil {
 		return fmt.Errorf("marshal hooks: %w", err)
 	}
@@ -338,14 +340,26 @@ func writeClaudeSettings(path string, settings claudeSettings) error {
 		return fmt.Errorf("create directory %s: %w", dir, err)
 	}
 
-	data, err := json.MarshalIndent(settings, "", "  ")
+	data, err := marshalJSONNoEscape(settings)
 	if err != nil {
 		return fmt.Errorf("marshal settings: %w", err)
 	}
-	data = append(data, '\n')
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+// marshalJSONNoEscape marshals v as indented JSON without HTML-escaping
+// characters like &, <, >. This preserves && in shell commands.
+func marshalJSONNoEscape(v interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
