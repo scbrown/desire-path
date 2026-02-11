@@ -65,6 +65,22 @@ Subagent transcripts at:
    (Bash: stdout/stderr, Read: file content, Edit: patch, Task: agent
    metrics, etc.)
 
+## Decisions
+
+- **Long turn threshold**: Configurable via `turn_length_threshold` in
+  `config.toml`, defaulting to 5. Surfaced as `--min-length` on `dp turns`.
+- **Subagent calls**: Do NOT count toward parent turn length. Subagent
+  transcripts are parsed independently — they're their own turns with their
+  own patterns. The parent turn sees only the `Task` tool call itself.
+- **Pattern fuzzing**: Consecutive repeats collapse into `Tool{N+}` for
+  clustering (so `Read{3}` and `Read{5}` match the same abstract pattern),
+  but `dp turns` can drill down to show exact sequences per instance.
+- **No backfill**: This is a new feature. No retroactive enrichment or
+  `dp enrich` command needed. Turn data flows in from transcript parsing
+  going forward.
+- **No backwards compatibility**: New schema columns can be NOT NULL with
+  defaults. No migration path for old data.
+
 ## Design
 
 ### Phase 1: Transcript Parser
@@ -83,7 +99,6 @@ type Turn struct {
     Index      int           // 0-based turn number in session
     StartedAt  time.Time
     DurationMs int           // from turn_duration system event, 0 if absent
-    UserPrompt string        // human text that started the turn (for context, not stored in db)
     Steps      []Step        // tool calls in execution order
 }
 
@@ -96,7 +111,6 @@ type Step struct {
     IsParallel bool            // true if fired concurrently with adjacent steps
     IsError    bool
     Error      string
-    IsSubagent bool            // true if this came from a subagent transcript
 }
 ```
 
@@ -114,29 +128,30 @@ type Step struct {
 8. Detect parallelism: consecutive tool_use events that chain from the same
    parent (no intervening tool_result) are parallel.
 
-**Subagent handling:** Parse subagent transcripts from the `subagents/`
-directory. Steps from subagents get `IsSubagent = true`. They're appended
-to the parent turn (the turn containing the `Task` tool call).
+**Subagent handling:** Subagent transcripts are parsed as independent
+sessions. They produce their own Turn/Step data. The parent session's `Task`
+tool call is just a single Step — the subagent's internal work is analyzed
+separately.
 
-### Phase 2: Schema Migration
+### Phase 2: Schema Migration + Ingest Integration
 
 Add V3 migration to `internal/store/sqlite.go`:
 
 ```sql
-ALTER TABLE invocations ADD COLUMN turn_id TEXT;
-ALTER TABLE invocations ADD COLUMN turn_sequence INTEGER;
-ALTER TABLE invocations ADD COLUMN turn_length INTEGER;
+ALTER TABLE invocations ADD COLUMN turn_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE invocations ADD COLUMN turn_sequence INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE invocations ADD COLUMN turn_length INTEGER NOT NULL DEFAULT 0;
 ```
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `turn_id` | TEXT | Groups invocations within a turn. Derived from `(session_id, turn_index)`. NULL for hook-ingested records not yet enriched. |
+| `turn_id` | TEXT | Groups invocations within a turn. Derived from `(session_id, turn_index)`. |
 | `turn_sequence` | INTEGER | 0-based position of this call within the turn. |
-| `turn_length` | INTEGER | Total tool calls in this turn (denormalized for fast queries). A high value signals a long exploration turn. |
+| `turn_length` | INTEGER | Total tool calls in this turn (denormalized). High value = long exploration turn. |
 
 **Why `turn_length` is denormalized:** The primary query is "show me tools
 that appear in long turns." Without `turn_length` on each row, every query
-needs a subquery to count siblings. With it, `WHERE turn_length > 5` is
+needs a subquery to count siblings. With it, `WHERE turn_length > N` is
 trivial.
 
 Model change in `internal/model/model.go`:
@@ -145,33 +160,26 @@ Model change in `internal/model/model.go`:
 type Invocation struct {
     // ... existing fields ...
     TurnID       string `json:"turn_id,omitempty"`
-    TurnSequence *int   `json:"turn_sequence,omitempty"`
-    TurnLength   *int   `json:"turn_length,omitempty"`
+    TurnSequence int    `json:"turn_sequence"`
+    TurnLength   int    `json:"turn_length"`
 }
 ```
 
-### Phase 3: Enrichment Command
+**Ingest integration:** Modify the ingest pipeline so that when a transcript
+path is available (it's already in `Fields.Extra` from the Claude Code
+hook), dp can parse the transcript to determine turn context for the current
+invocation. The hook fires per-tool-call, so at ingest time we know the
+`session_id` and `tool_use_id` — we just need to locate the current turn in
+the transcript to populate `turn_id`, `turn_sequence`, and `turn_length`.
 
-New CLI command: `dp enrich`
+**Transcript location:** The hook payload includes `transcript_path`. For
+the in-progress session, this file is being actively written. The parser
+reads up to the current point, identifies which turn contains the
+`tool_use_id` being ingested, and extracts the turn metadata. Since tool
+results arrive after tool calls, by the time PostToolUse fires, the
+tool_use event and all preceding events in the turn are already written.
 
-```
-dp enrich --transcript <path>           # enrich from one transcript
-dp enrich --session <session-id>        # find transcript by session ID
-dp enrich --claude-dir ~/.claude        # enrich all transcripts found
-```
-
-**Flow:**
-1. Parse transcript → `[]Turn`
-2. For each Turn, for each Step:
-   - Match to existing invocation by `(instance_id = session_id, metadata->tool_use_id = step.tool_use_id)`
-   - If matched: set `turn_id`, `turn_sequence`, `turn_length`
-   - If not matched (invocation wasn't ingested via hook): optionally create it
-3. Report: "Enriched N invocations across M turns. K invocations unmatched."
-
-**Auto-enrichment (future):** Hook into SessionStart to parse the *previous*
-session's transcript automatically. Or a cron/periodic mode.
-
-### Phase 4: Turn-Aware Reporting
+### Phase 3: Turn-Aware Reporting
 
 #### `dp paths --turns`
 
@@ -185,20 +193,21 @@ RANK  PATTERN     COUNT  AVG_TURN_LEN  LONG_TURN_%  ALIAS
 ```
 
 - **AVG_TURN_LEN**: Average turn length when this tool appears.
-- **LONG_TURN_%**: Percentage of appearances in turns with 5+ tool calls.
+- **LONG_TURN_%**: Percentage of appearances in turns exceeding the
+  configured threshold (default 5).
 
 High `LONG_TURN_%` signals: "when agents use this tool, they usually need
 many more calls to finish — the tool isn't getting them there."
 
 #### `dp turns`
 
-New command showing turn-level patterns:
+New command showing turn-level data:
 
 ```
-dp turns [--min-length N] [--since DATETIME] [--session SESSION_ID]
+dp turns [--min-length N] [--since DATETIME] [--session SESSION_ID] [--json]
 ```
 
-Output:
+Default output (turns exceeding threshold):
 
 ```
 SESSION   TURN  LENGTH  TOOLS
@@ -207,38 +216,42 @@ abc123    5     5       Bash → Bash → Read → Bash → Read
 def456    1     8       Glob → Read → Read → Grep → Read → Read → Read → Edit
 ```
 
-Filter to long turns (`--min-length 5`) to surface the exploration patterns
-that indicate tool adequacy gaps.
-
 #### `dp turns --patterns`
 
-Cluster similar turn shapes:
+Cluster similar turn shapes using abstract patterns where consecutive
+repeats of the same tool collapse into `Tool{N+}`:
 
 ```
 PATTERN                          COUNT  AVG_LENGTH  SESSIONS
-Grep → Read{2,} → Edit          12     5.3         4
-Glob → Read{3,}                 8      4.8         3
-Bash{2,} → Read                 6      3.5         5
+Grep → Read{2+} → Edit          12     5.3         4
+Glob → Read{3+}                 8      4.8         3
+Bash{2+} → Read                 6      3.5         5
 ```
 
-This uses simple sequence abstraction: consecutive repeats of the same tool
-collapse (e.g., `Read → Read → Read` becomes `Read{3}`). Patterns that
-recur across sessions are the strongest signals.
+Drill down into a specific pattern to see exact instances:
 
-### Phase 5: Desire Path Surfacing
+```
+dp turns --pattern "Grep → Read{2+} → Edit"
+```
+
+Shows every matching turn with its exact tool sequence.
+
+### Phase 4: Desire Path Surfacing
 
 Connect turn patterns back to the desire path system. Long, recurring turn
 patterns are desire paths even though no tool errored.
 
 **New desire category:** `"turn-pattern"` (alongside existing `"env-need"`).
 
-When `dp enrich` detects a turn pattern that:
+When `dp turns --patterns` (or an analysis pass during ingest) detects a
+turn pattern that:
 - Appears 3+ times across sessions
-- Has turn length ≥ 4
+- Has turn length exceeding the configured threshold
 
 It creates a Desire record:
 - `ToolName`: the first tool in the pattern (the "entry point")
-- `Error`: descriptive, e.g., "Repeated pattern: Grep → Read×3 → Edit (avg 5.3 calls, seen 12 times)"
+- `Error`: descriptive, e.g., "Repeated pattern: Grep → Read{2+} → Edit
+  (avg 5.3 calls, seen 12 times across 4 sessions)"
 - `Category`: `"turn-pattern"`
 - `Source`: `"transcript-analysis"`
 
@@ -249,8 +262,20 @@ view of "what agents struggle with" — both hard failures and soft ones.
 
 The parser extracts only structural metadata: tool names, sequence, timing,
 error messages. It never stores user prompts, tool input content, or tool
-output in dp's database. `UserPrompt` on the `Turn` struct is used only for
-in-memory analysis context, never persisted.
+output in dp's database.
+
+## Config
+
+New `config.toml` key:
+
+```toml
+turn_length_threshold = 5  # turns with more tool calls than this are "long"
+```
+
+Used by:
+- `dp turns` default `--min-length` value
+- `dp paths --turns` `LONG_TURN_%` calculation
+- Desire path surfacing threshold
 
 ## Files Modified
 
@@ -260,30 +285,9 @@ in-memory analysis context, never persisted.
 | `internal/transcript/parse_test.go` | **New**: Unit tests with fixture transcripts |
 | `internal/transcript/testdata/` | **New**: Minimal synthetic JSONL fixtures |
 | `internal/model/model.go` | Add TurnID, TurnSequence, TurnLength to Invocation |
-| `internal/store/sqlite.go` | V3 migration, update insert/query for turn columns |
-| `internal/store/store.go` | Add EnrichInvocation method, TurnStats query |
-| `internal/cli/enrich.go` | **New**: `dp enrich` command |
-| `internal/cli/turns.go` | **New**: `dp turns` command |
+| `internal/store/sqlite.go` | V3 migration, updated insert/query for turn columns |
+| `internal/store/store.go` | Add TurnStats query methods |
+| `internal/config/config.go` | Add TurnLengthThreshold field |
+| `internal/ingest/ingest.go` | Transcript parsing at ingest time, turn-pattern desires |
+| `internal/cli/turns.go` | **New**: `dp turns` and `dp turns --patterns` |
 | `internal/cli/paths.go` | Add `--turns` flag, AVG_TURN_LEN/LONG_TURN_% columns |
-| `internal/ingest/ingest.go` | Turn-pattern desire creation |
-
-## Open Questions
-
-1. **Threshold for "long turn"**: Starting with 5+ tool calls. Is this the
-   right default, or should it be configurable? Recommendation: config value
-   `turn_length_threshold` defaulting to 5, surfaced as `--min-length` on
-   `dp turns`.
-
-2. **Subagent attribution**: Should subagent tool calls count toward parent
-   turn length? Recommendation: yes, with `is_subagent` flag so they can be
-   filtered. An agent spawning a Task subagent that makes 20 calls is still
-   a signal that the task was complex.
-
-3. **Pattern similarity**: How fuzzy should pattern matching be? `Grep → Read → Read → Edit`
-   vs `Grep → Read → Read → Read → Edit` — same pattern? Recommendation:
-   collapse consecutive repeats into `Tool{N}` notation for clustering.
-
-4. **Retroactive enrichment**: Should `dp enrich` create invocation records
-   for tool calls found in transcripts but not in the database? This would
-   fill gaps from before dp was installed. Recommendation: yes, opt-in via
-   `--backfill` flag.
