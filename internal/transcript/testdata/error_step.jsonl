@@ -1,0 +1,8 @@
+{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-004","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":"Run the build"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-004","timestamp":"2026-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Bash","input":{"command":"make build"}}]}}
+{"type":"user","uuid":"u2","parentUuid":"a1","sessionId":"sess-004","timestamp":"2026-01-15T10:00:05Z","sourceToolAssistantUUID":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","is_error":true,"content":"make: *** No rule to make target 'build'.  Stop."}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","sessionId":"sess-004","timestamp":"2026-01-15T10:00:06Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_002","name":"Bash","input":{"command":"go build ./..."}}]}}
+{"type":"user","uuid":"u3","parentUuid":"a2","sessionId":"sess-004","timestamp":"2026-01-15T10:00:10Z","sourceToolAssistantUUID":"a2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_002","is_error":false,"content":""}]}}
+{"type":"assistant","uuid":"a3","parentUuid":"u3","sessionId":"sess-004","timestamp":"2026-01-15T10:00:11Z","message":{"role":"assistant","content":[{"type":"text","text":"Build succeeded."}]}}
+{"type":"system","uuid":"s1","parentUuid":"a3","sessionId":"sess-004","timestamp":"2026-01-15T10:00:12Z","subtype":"stop_hook_summary","hookCount":0,"hookErrors":[],"preventedContinuation":false}
+{"type":"system","uuid":"s2","parentUuid":"s1","sessionId":"sess-004","timestamp":"2026-01-15T10:00:12Z","subtype":"turn_duration","durationMs":12000}

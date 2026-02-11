@@ -1,0 +1,4 @@
+{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-005","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":"Quick question"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-005","timestamp":"2026-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Read","input":{"file_path":"README.md"}}]}}
+{"type":"user","uuid":"u2","parentUuid":"a1","sessionId":"sess-005","timestamp":"2026-01-15T10:00:02Z","sourceToolAssistantUUID":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","is_error":false,"content":"# README"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","sessionId":"sess-005","timestamp":"2026-01-15T10:00:03Z","message":{"role":"assistant","content":[{"type":"text","text":"Here is the README."}]}}
