@@ -44,7 +44,7 @@ RANK  PATTERN            COUNT  FIRST_SEEN  LAST_SEEN
 5     list_directory      8     2026-02-01  2026-02-05
 
 # 4. "search_files" keeps failing — what real tool is it closest to?
-$ dp suggest search_files
+$ dp similar search_files
 CANDIDATE  SCORE
 Grep       0.82
 Glob       0.64
@@ -68,7 +68,7 @@ $ dp alias search_files Grep
 
 🧠 **Smart Suggestions** — Levenshtein-powered similarity engine finds the real tool name behind every hallucination. CamelCase and underscore-aware.
 
-🔗 **[Alias System](https://scbrown.github.io/desire-path/concepts/aliases.html)** — Annotate patterns with what they *should* map to (`search_files` → `Grep`). Aliases appear in `dp paths` output and short-circuit `dp suggest`. Use them to build your rosetta stone, then act on it — add instructions to CLAUDE.md, build MCP tool wrappers, or lobby for better tool names upstream.
+🔗 **[Alias System](https://scbrown.github.io/desire-path/concepts/aliases.html)** — Annotate patterns with what they *should* map to (`search_files` → `Grep`). Aliases appear in `dp paths` output and short-circuit `dp similar`. Use them to build your rosetta stone, then act on it — add instructions to CLAUDE.md, build MCP tool wrappers, or lobby for better tool names upstream.
 
 🔌 **Plugin Architecture** — Extensible source plugins. Claude Code ships built-in. Write your own in ~50 lines of Go.
 
@@ -160,7 +160,7 @@ Pre-built binaries for Linux, macOS, and Windows available on the [Releases](htt
 
 | Command | Description |
 |---------|-------------|
-| `dp suggest` | Find similar known tools via string similarity |
+| `dp similar` | Find similar known tools via string similarity |
 | `dp alias` | Create or update a tool name mapping |
 | `dp aliases` | List all configured aliases |
 
@@ -209,7 +209,7 @@ graph LR
     B -->|Extract| C[Universal Fields]
     C -->|Ingest| D[SQLite]
     D -->|Query| E[dp list / paths / stats]
-    E -->|Analyze| F[dp suggest / inspect]
+    E -->|Analyze| F[dp similar / inspect]
     F -->|Fix| G[dp alias]
 
     style A fill:#e1bee7,stroke:#7b1fa2,color:#000

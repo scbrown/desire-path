@@ -23,7 +23,7 @@ Commands for exploring recorded desire paths.
 ### Map & Fix
 Commands for resolving tool name mismatches.
 
-- **suggest** - Suggest known tool mappings for a tool name
+- **similar** - Find known tools similar to a tool name
 - **alias** - Create, update, or delete tool name aliases and command correction rules
 - **aliases** - List all configured aliases and rules
 - **pave** - Turn aliases into active tool-call intercepts
@@ -45,7 +45,7 @@ Commands for managing configuration.
 | inspect | Show detailed view of a specific desire path |
 | stats | Show summary statistics |
 | export | Export raw desire or invocation data |
-| suggest | Suggest known tool mappings for a tool name |
+| similar | Find known tools similar to a tool name |
 | alias | Create, update, or delete tool name aliases and correction rules |
 | aliases | List all configured aliases and rules |
 | pave | Turn aliases into active tool-call intercepts |

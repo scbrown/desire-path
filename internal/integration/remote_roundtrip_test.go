@@ -175,7 +175,7 @@ func TestRemoteInspectRoundTrip(t *testing.T) {
 }
 
 // TestRemoteGoldenPath exercises the full desire-path workflow via the remote
-// store: ingest → alias → pave-check → suggest → inspect.
+// store: ingest → alias → pave-check → similar → inspect.
 func TestRemoteGoldenPath(t *testing.T) {
 	t.Parallel()
 	e, _ := newRemoteEnv(t)
@@ -192,10 +192,10 @@ func TestRemoteGoldenPath(t *testing.T) {
 	// 3. Create alias.
 	e.mustRun(nil, "alias", "read_file", "Read")
 
-	// 4. Suggest should find the alias.
-	stdout, _ = e.mustRun(nil, "suggest", "read_file", "--json")
+	// 4. Similar should find the alias.
+	stdout, _ = e.mustRun(nil, "similar", "read_file", "--json")
 	if !strings.Contains(stdout, "Read") {
-		t.Errorf("suggest missing alias Read:\n%s", stdout)
+		t.Errorf("similar missing alias Read:\n%s", stdout)
 	}
 
 	// 5. Paths should show the pattern.

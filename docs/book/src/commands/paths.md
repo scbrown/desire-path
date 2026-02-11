@@ -44,7 +44,7 @@ Show aggregated paths ranked by frequency
 
 The paths command aggregates desire records by tool name pattern and ranks them by frequency. This reveals which tool name variations are most commonly attempted by AI coding tools.
 
-The ALIAS column shows if a mapping has been configured using `dp alias`. When an alias exists, desire_path can automatically suggest the correct tool name.
+The ALIAS column shows if a mapping has been configured using `dp alias`. When an alias exists, desire_path can automatically find the correct tool name.
 
 Use `--top` to control how many patterns to display. The default is 20, which typically covers the most actionable patterns.
 

@@ -15,7 +15,7 @@ improve your agent's tool use."
 
 ## Prerequisites
 
-- **dp-rhb**: Rename current `dp suggest` to `dp similar`. The string
+- **dp-rhb** (done): Renamed `dp suggest` to `dp similar`. The string
   similarity matcher is still useful but it's a building block, not the
   top-level command.
 - **dp-6yn** (closed): pave-check records corrections as desires, so aliased
@@ -191,10 +191,10 @@ Each suggestion type is a separate function:
 
 `Recommend()` calls all four, merges, assigns priorities, and sorts.
 
-### CLI: `internal/cli/suggest.go` (rewritten)
+### CLI: `internal/cli/suggest.go` (new)
 
-After dp-rhb renames the old suggest to similar, this file gets rewritten
-to call `analyze.Recommend()`.
+Now that dp-rhb has renamed the old suggest to `internal/cli/similar.go`,
+this file will be created fresh to call `analyze.Recommend()`.
 
 ### Store Additions
 

@@ -225,7 +225,7 @@ Raw hook payload (JSON bytes)
 |-----|---------|
 | `db_path` | Override default database location |
 | `default_source` | Default `--source` value for `dp record` |
-| `known_tools` | Comma-separated known tool names for `dp suggest` |
+| `known_tools` | Comma-separated known tool names for `dp similar` |
 | `default_format` | Default output format: `table` or `json` |
 
 Config values are loaded in `PersistentPreRun` on the root command, so they apply

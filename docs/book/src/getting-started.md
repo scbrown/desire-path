@@ -134,12 +134,12 @@ This returns:
 - Top input payloads (truncated)
 - Whether an alias already exists
 
-### Suggest Close Matches
+### Find Similar Tools
 
 Find known tools similar to a hallucinated name:
 
 ```bash
-dp suggest read_file
+dp similar read_file
 ```
 
 dp uses Levenshtein distance with camelCase normalization, prefix bonuses, and suffix bonuses to rank known tools by similarity. By default it shows the top 5 matches with scores above 0.5.

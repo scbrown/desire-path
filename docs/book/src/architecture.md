@@ -224,7 +224,7 @@ CREATE TABLE schema_version (
 
 Located in `internal/analyze/`.
 
-**Similarity Matching**: Used by `dp suggest` to find known tools similar to a hallucinated name.
+**Similarity Matching**: Used by `dp similar` to find known tools similar to a hallucinated name.
 
 **Algorithm**:
 
