@@ -46,7 +46,7 @@ machine-readable output.`,
   dp paths --top 10
 
   # Find similar known tools and create an alias
-  dp suggest read_file
+  dp similar read_file
   dp alias read_file Read
 
   # Set up automatic recording from Claude Code

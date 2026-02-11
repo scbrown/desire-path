@@ -32,7 +32,7 @@ dp paths
 dp inspect read_file
 
 # Find close matches among known tools
-dp suggest read_file
+dp similar read_file
 
 # Wire up the fix
 dp alias read_file Read

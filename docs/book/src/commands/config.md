@@ -68,7 +68,7 @@ Use this to:
 - Add custom tools to the suggestion engine
 - Match your AI coding tool's specific tool naming conventions
 
-Can be overridden in `dp suggest` with the `--known` flag.
+Can be overridden in `dp similar` with the `--known` flag.
 
 ### default_format
 Default export format: json or csv. Default: json

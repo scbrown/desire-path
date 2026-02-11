@@ -91,7 +91,7 @@ dp record [--source NAME]            Record a desire from stdin JSON
 dp list [--since] [--source] [--tool] [--limit]  List recent desires
 dp paths [--top 20] [--since]        Show aggregated paths ranked by frequency
 dp inspect <pattern> [--since] [--top]  Detailed view of a specific path
-dp suggest <tool-name> [--known] [--threshold] [--top]  Suggest tool mappings via similarity
+dp similar <tool-name> [--known] [--threshold] [--top]  Find similar tools via string similarity
 dp alias <from> <to>                 Map a hallucinated name to a real tool
 dp alias --delete <from>             Remove an alias
 dp aliases                           List all configured aliases

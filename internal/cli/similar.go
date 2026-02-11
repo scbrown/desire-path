@@ -18,23 +18,23 @@ var defaultKnownTools = []string{
 }
 
 var (
-	suggestKnown     string
-	suggestThreshold float64
-	suggestTopN      int
+	similarKnown     string
+	similarThreshold float64
+	similarTopN      int
 )
 
-// suggestCmd suggests known tool mappings for a given tool name.
-var suggestCmd = &cobra.Command{
-	Use:   "suggest <tool-name>",
-	Short: "Suggest known tool mappings for a tool name",
-	Long: `Suggest finds known tools similar to the given name using string similarity.
+// similarCmd finds known tools similar to a given tool name.
+var similarCmd = &cobra.Command{
+	Use:   "similar <tool-name>",
+	Short: "Find known tools similar to a tool name",
+	Long: `Similar finds known tools similar to the given name using string similarity.
 It checks configured aliases for an exact mapping first, then ranks known tools
 by similarity score. Known tools default to Claude Code built-ins but can be
 overridden with the --known flag.`,
-	Example: `  dp suggest read_file
-  dp suggest WriteFile --known "Read,Write,Edit,Bash"
-  dp suggest edit_file --threshold 0.3 --top 3
-  dp suggest read_file --json`,
+	Example: `  dp similar read_file
+  dp similar WriteFile --known "Read,Write,Edit,Bash"
+  dp similar edit_file --threshold 0.3 --top 3
+  dp similar read_file --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		toolName := args[0]
@@ -54,7 +54,7 @@ overridden with the --known flag.`,
 		for _, a := range aliases {
 			if strings.EqualFold(a.From, toolName) {
 				if jsonOutput {
-					return writeSuggestAliasJSON(w, toolName, a.To)
+					return writeSimilarAliasJSON(w, toolName, a.To)
 				}
 				fmt.Fprintf(w, "Alias: %q → %q\n", toolName, a.To)
 				return nil
@@ -63,57 +63,57 @@ overridden with the --known flag.`,
 
 		// Build known tools list.
 		known := defaultKnownTools
-		if suggestKnown != "" {
-			known = strings.Split(suggestKnown, ",")
+		if similarKnown != "" {
+			known = strings.Split(similarKnown, ",")
 			for i := range known {
 				known[i] = strings.TrimSpace(known[i])
 			}
 		}
 
-		threshold := suggestThreshold
+		threshold := similarThreshold
 		if threshold == 0 {
 			threshold = analyze.DefaultThreshold
 		}
-		suggestions := analyze.SuggestN(toolName, known, suggestTopN, threshold)
+		suggestions := analyze.SuggestN(toolName, known, similarTopN, threshold)
 
 		if jsonOutput {
-			return writeSuggestJSON(w, toolName, suggestions)
+			return writeSimilarJSON(w, toolName, suggestions)
 		}
-		writeSuggestTable(w, toolName, suggestions)
+		writeSimilarTable(w, toolName, suggestions)
 		return nil
 	},
 }
 
 func init() {
-	suggestCmd.Flags().StringVar(&suggestKnown, "known", "", "comma-separated list of known tool names")
-	suggestCmd.Flags().Float64Var(&suggestThreshold, "threshold", 0, "minimum similarity score (default 0.5)")
-	suggestCmd.Flags().IntVar(&suggestTopN, "top", 5, "maximum number of suggestions")
-	rootCmd.AddCommand(suggestCmd)
+	similarCmd.Flags().StringVar(&similarKnown, "known", "", "comma-separated list of known tool names")
+	similarCmd.Flags().Float64Var(&similarThreshold, "threshold", 0, "minimum similarity score (default 0.5)")
+	similarCmd.Flags().IntVar(&similarTopN, "top", 5, "maximum number of suggestions")
+	rootCmd.AddCommand(similarCmd)
 }
 
-// suggestOutput is the JSON structure for suggest results.
-type suggestOutput struct {
+// similarOutput is the JSON structure for similar results.
+type similarOutput struct {
 	Query       string               `json:"query"`
 	Alias       string               `json:"alias,omitempty"`
 	Suggestions []analyze.Suggestion `json:"suggestions,omitempty"`
 }
 
-// writeSuggestAliasJSON writes an alias match as JSON.
-func writeSuggestAliasJSON(w io.Writer, query, alias string) error {
+// writeSimilarAliasJSON writes an alias match as JSON.
+func writeSimilarAliasJSON(w io.Writer, query, alias string) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(suggestOutput{Query: query, Alias: alias})
+	return enc.Encode(similarOutput{Query: query, Alias: alias})
 }
 
-// writeSuggestJSON writes suggestions as JSON.
-func writeSuggestJSON(w io.Writer, query string, suggestions []analyze.Suggestion) error {
+// writeSimilarJSON writes suggestions as JSON.
+func writeSimilarJSON(w io.Writer, query string, suggestions []analyze.Suggestion) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(suggestOutput{Query: query, Suggestions: suggestions})
+	return enc.Encode(similarOutput{Query: query, Suggestions: suggestions})
 }
 
-// writeSuggestTable writes suggestions as an aligned text table.
-func writeSuggestTable(w io.Writer, query string, suggestions []analyze.Suggestion) {
+// writeSimilarTable writes suggestions as an aligned text table.
+func writeSimilarTable(w io.Writer, query string, suggestions []analyze.Suggestion) {
 	if len(suggestions) == 0 {
 		fmt.Fprintf(w, "No suggestions found for %q\n", query)
 		return

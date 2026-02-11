@@ -52,8 +52,8 @@ func TestAllCommandsJSON(t *testing.T) {
 			args: []string{"inspect", "nonexistent", "--json"},
 		},
 		{
-			name: "suggest",
-			args: []string{"suggest", "read_file", "--json"},
+			name: "similar",
+			args: []string{"similar", "read_file", "--json"},
 		},
 		{
 			name: "ingest",

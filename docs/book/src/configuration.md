@@ -18,7 +18,7 @@ export DESIRE_PATH_CONFIG=/path/to/custom/config.toml
 |-----|------|-------------|---------|
 | `db_path` | string | Path to the SQLite database file | `~/.dp/desires.db` |
 | `default_source` | string | Default source tag for recorded desires when `--source` is not specified | `""` (empty) |
-| `known_tools` | string | Comma-separated list of known tool names used by `dp suggest` | `""` (empty—uses built-in list) |
+| `known_tools` | string | Comma-separated list of known tool names used by `dp similar` | `""` (empty—uses built-in list) |
 | `default_format` | string | Default output format: `"table"` or `"json"` | `"table"` |
 
 ## Usage Examples
@@ -48,7 +48,7 @@ dp config default_format json
 
 ### Configure Known Tools
 
-The `known_tools` setting controls the list of tool names used by `dp suggest` for similarity matching. If empty, dp uses a built-in default list (currently: `Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, `WebSearch`, `WebFetch`).
+The `known_tools` setting controls the list of tool names used by `dp similar` for similarity matching. If empty, dp uses a built-in default list (currently: `Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, `WebSearch`, `WebFetch`).
 
 Set a custom list:
 
@@ -165,7 +165,7 @@ Environment variables take precedence over config file settings but are overridd
 ## Tips
 
 - Use `--json` output with `jq` for scripting: `dp paths --json | jq '.[] | select(.count > 10)'`
-- Keep `known_tools` in sync with your AI's actual tool set for better `suggest` results
+- Keep `known_tools` in sync with your AI's actual tool set for better `similar` results
 - If you're testing or developing, point `--db` at a temporary database to avoid polluting your real data
 - The config file is optional—all keys have sensible defaults
 

@@ -11,7 +11,7 @@ import (
 )
 
 // TestGoldenPath exercises the full happy-path workflow end to end:
-// init → ingest → paths → suggest → alias → pave --hook → pave-check.
+// init → ingest → paths → similar → alias → pave --hook → pave-check.
 // This is the Tier 3 P1 integration test.
 func TestGoldenPath(t *testing.T) {
 	e := newEnv(t)
@@ -58,8 +58,8 @@ func TestGoldenPath(t *testing.T) {
 		t.Errorf("read_file count = %d, want 3", paths[0].Count)
 	}
 
-	// Step 4: dp suggest — find matching tool (use low threshold to ensure results).
-	stdout, _ = e.mustRun(nil, "suggest", "read_file", "--json", "--threshold", "0.1")
+	// Step 4: dp similar — find matching tool (use low threshold to ensure results).
+	stdout, _ = e.mustRun(nil, "similar", "read_file", "--json", "--threshold", "0.1")
 	var suggestion struct {
 		Query       string `json:"query"`
 		Suggestions []struct {
@@ -345,13 +345,13 @@ func TestIngestThenAliasThenPaveCheck(t *testing.T) {
 	}
 }
 
-// TestSuggestAfterAlias verifies that dp suggest returns the existing alias
+// TestSimilarAfterAlias verifies that dp similar returns the existing alias
 // rather than similarity-based suggestions when an alias exists.
-func TestSuggestAfterAlias(t *testing.T) {
+func TestSimilarAfterAlias(t *testing.T) {
 	e := newEnv(t)
 
-	// Without alias: suggest should return similarity results (low threshold).
-	stdout, _ := e.mustRun(nil, "suggest", "read_file", "--json", "--threshold", "0.1")
+	// Without alias: similar should return similarity results (low threshold).
+	stdout, _ := e.mustRun(nil, "similar", "read_file", "--json", "--threshold", "0.1")
 	var before struct {
 		Query       string `json:"query"`
 		Suggestions []struct {
@@ -368,8 +368,8 @@ func TestSuggestAfterAlias(t *testing.T) {
 	// Create alias.
 	e.mustRun(nil, "alias", "read_file", "Read")
 
-	// With alias: suggest should return the alias directly.
-	stdout, _ = e.mustRun(nil, "suggest", "read_file", "--json")
+	// With alias: similar should return the alias directly.
+	stdout, _ = e.mustRun(nil, "similar", "read_file", "--json")
 	var after struct {
 		Query string `json:"query"`
 		Alias string `json:"alias"`

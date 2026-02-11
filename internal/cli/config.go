@@ -22,7 +22,7 @@ With two arguments, sets the key to the given value.
 Settings:
   db_path         Path to the SQLite database
   default_source  Default source tag for recorded desires
-  known_tools     Comma-separated list of known tool names (for suggest)
+  known_tools     Comma-separated list of known tool names (for similar)
   track_tools     JSON array of tool names to track (empty = track all)
   default_format  Default output format: "table" or "json"`,
 	Example: `  dp config

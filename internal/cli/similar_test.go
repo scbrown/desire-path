@@ -12,14 +12,14 @@ import (
 	"github.com/scbrown/desire-path/internal/store"
 )
 
-func TestWriteSuggestTable(t *testing.T) {
+func TestWriteSimilarTable(t *testing.T) {
 	suggestions := []analyze.Suggestion{
 		{Name: "Read", Score: 0.82},
 		{Name: "ReadDir", Score: 0.65},
 	}
 
 	var buf bytes.Buffer
-	writeSuggestTable(&buf, "read_file", suggestions)
+	writeSimilarTable(&buf, "read_file", suggestions)
 	out := buf.String()
 
 	if !strings.Contains(out, "RANK") {
@@ -39,9 +39,9 @@ func TestWriteSuggestTable(t *testing.T) {
 	}
 }
 
-func TestWriteSuggestTableEmpty(t *testing.T) {
+func TestWriteSimilarTableEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	writeSuggestTable(&buf, "zzzzz", nil)
+	writeSimilarTable(&buf, "zzzzz", nil)
 	out := buf.String()
 
 	if !strings.Contains(out, "No suggestions found") {
@@ -52,14 +52,14 @@ func TestWriteSuggestTableEmpty(t *testing.T) {
 	}
 }
 
-func TestWriteSuggestJSON(t *testing.T) {
+func TestWriteSimilarJSON(t *testing.T) {
 	suggestions := []analyze.Suggestion{
 		{Name: "Read", Score: 0.82},
 	}
 
 	var buf bytes.Buffer
-	if err := writeSuggestJSON(&buf, "read_file", suggestions); err != nil {
-		t.Fatalf("writeSuggestJSON: %v", err)
+	if err := writeSimilarJSON(&buf, "read_file", suggestions); err != nil {
+		t.Fatalf("writeSimilarJSON: %v", err)
 	}
 	out := buf.String()
 
@@ -74,10 +74,10 @@ func TestWriteSuggestJSON(t *testing.T) {
 	}
 }
 
-func TestWriteSuggestAliasJSON(t *testing.T) {
+func TestWriteSimilarAliasJSON(t *testing.T) {
 	var buf bytes.Buffer
-	if err := writeSuggestAliasJSON(&buf, "read_file", "Read"); err != nil {
-		t.Fatalf("writeSuggestAliasJSON: %v", err)
+	if err := writeSimilarAliasJSON(&buf, "read_file", "Read"); err != nil {
+		t.Fatalf("writeSimilarAliasJSON: %v", err)
 	}
 	out := buf.String()
 
@@ -89,7 +89,7 @@ func TestWriteSuggestAliasJSON(t *testing.T) {
 	}
 }
 
-func TestSuggestCmdWithAlias(t *testing.T) {
+func TestSimilarCmdWithAlias(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 	s, err := store.New(db)
 	if err != nil {
@@ -101,7 +101,7 @@ func TestSuggestCmdWithAlias(t *testing.T) {
 	s.Close()
 
 	var buf bytes.Buffer
-	rootCmd.SetArgs([]string{"suggest", "read_file", "--db", db})
+	rootCmd.SetArgs([]string{"similar", "read_file", "--db", db})
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
 
@@ -118,11 +118,11 @@ func TestSuggestCmdWithAlias(t *testing.T) {
 	}
 }
 
-func TestSuggestCmdNoMatch(t *testing.T) {
+func TestSimilarCmdNoMatch(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 
 	var buf bytes.Buffer
-	rootCmd.SetArgs([]string{"suggest", "zzzzzzzzz", "--db", db})
+	rootCmd.SetArgs([]string{"similar", "zzzzzzzzz", "--db", db})
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
 
@@ -136,12 +136,12 @@ func TestSuggestCmdNoMatch(t *testing.T) {
 	}
 }
 
-func TestSuggestCmdJSON(t *testing.T) {
+func TestSimilarCmdJSON(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 	defer func() { jsonOutput = false }()
 
 	var buf bytes.Buffer
-	rootCmd.SetArgs([]string{"suggest", "read_file", "--db", db, "--json"})
+	rootCmd.SetArgs([]string{"similar", "read_file", "--db", db, "--json"})
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
 
@@ -155,12 +155,12 @@ func TestSuggestCmdJSON(t *testing.T) {
 	}
 }
 
-func TestSuggestCmdCustomKnown(t *testing.T) {
+func TestSimilarCmdCustomKnown(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 	defer func() { jsonOutput = false }()
 
 	var buf bytes.Buffer
-	rootCmd.SetArgs([]string{"suggest", "rread", "--db", db, "--known", "Read,Write", "--json"})
+	rootCmd.SetArgs([]string{"similar", "rread", "--db", db, "--known", "Read,Write", "--json"})
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
 

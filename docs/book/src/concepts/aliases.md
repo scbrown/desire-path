@@ -26,7 +26,7 @@ Example:
 dp alias read_file Read
 ```
 
-Now when you run `dp paths` or `dp suggest`, desires for `read_file` show their connection to `Read`.
+Now when you run `dp paths` or `dp similar`, desires for `read_file` show their connection to `Read`.
 
 ## Upsert Behavior
 
@@ -84,7 +84,7 @@ PATTERN         COUNT   FIRST SEEN            LAST SEEN             ALIAS
 read_file       47      2026-02-01 09:15:23   2026-02-09 10:30:45   Read
 ```
 
-### In `dp suggest`
+### In `dp similar`
 
 Suggestions incorporate alias information to show what the AI is trying to accomplish with tools that actually exist.
 

@@ -1,10 +1,10 @@
-# dp suggest
+# dp similar
 
-Suggest known tool mappings for a tool name
+Find known tools similar to a tool name
 
 ## Usage
 
-    dp suggest <tool-name> [flags]
+    dp similar <tool-name> [flags]
 
 ## Flags
 
@@ -16,7 +16,7 @@ Suggest known tool mappings for a tool name
 
 ## Examples
 
-    $ dp suggest read_file
+    $ dp similar read_file
     Checking alias mappings...
     Found alias: read_file -> Read
 
@@ -25,7 +25,7 @@ Suggest known tool mappings for a tool name
 
     Recommended action: Use "Read" instead of "read_file"
 
-    $ dp suggest file_reader
+    $ dp similar file_reader
     Checking alias mappings...
     No alias found for "file_reader"
 
@@ -37,7 +37,7 @@ Suggest known tool mappings for a tool name
     Recommended action: Consider using "Read" or create an alias with:
         dp alias file_reader Read
 
-    $ dp suggest grepsearch --threshold 0.4
+    $ dp similar grepsearch --threshold 0.4
     Checking alias mappings...
     No alias found for "grepsearch"
 
@@ -49,7 +49,7 @@ Suggest known tool mappings for a tool name
     Recommended action: Consider using "Grep" or create an alias with:
         dp alias grepsearch Grep
 
-    $ dp suggest custom_tool --known "CustomRead,CustomWrite,CustomEdit"
+    $ dp similar custom_tool --known "CustomRead,CustomWrite,CustomEdit"
     Checking alias mappings...
     No alias found for "custom_tool"
 
@@ -61,7 +61,7 @@ Suggest known tool mappings for a tool name
 
 ## Details
 
-The suggest command helps resolve tool name mismatches by finding the closest matching known tool. It uses two strategies:
+The similar command helps resolve tool name mismatches by finding the closest matching known tool. It uses two strategies:
 
 1. Alias lookup: First checks if an explicit alias has been configured with `dp alias`
 2. Similarity matching: Calculates Levenshtein distance to find phonetically or structurally similar tool names
@@ -80,7 +80,7 @@ Default known tools (Claude Code conventions):
 
 Override the known tools list with `--known` for custom tool environments:
 
-    dp suggest mytool --known "Tool1,Tool2,Tool3"
+    dp similar mytool --known "Tool1,Tool2,Tool3"
 
 The similarity score ranges from 0.0 (completely different) to 1.0 (identical). The `--threshold` flag filters out weak matches. Default is 0.5, which typically excludes spurious suggestions.
 
@@ -88,11 +88,11 @@ Use `--top` to limit suggestions. Default is 5, which is usually sufficient to f
 
 When an alias exists, it's always shown first with a score of 1.0 and marked as "alias". This makes aliases the authoritative source for mappings.
 
-Use suggest interactively when debugging why a tool call failed:
+Use similar interactively when debugging why a tool call failed:
 
     $ dp list --limit 1
     # See a failed tool name
-    $ dp suggest <that-tool-name>
+    $ dp similar <that-tool-name>
     # Get suggestions and create alias if needed
 
-Integrate suggest into your workflow by running it after reviewing `dp paths` to batch-create aliases for the most common patterns.
+Integrate similar into your workflow by running it after reviewing `dp paths` to batch-create aliases for the most common patterns.

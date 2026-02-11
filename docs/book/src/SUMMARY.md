@@ -32,7 +32,7 @@
 - [dp inspect](./commands/inspect.md)
 - [dp stats](./commands/stats.md)
 - [dp export](./commands/export.md)
-- [dp suggest](./commands/suggest.md)
+- [dp similar](./commands/similar.md)
 - [dp alias](./commands/alias.md)
 - [dp pave](./commands/pave.md)
 - [dp config](./commands/config.md)
