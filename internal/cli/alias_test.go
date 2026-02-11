@@ -23,6 +23,7 @@ func resetAliasFlags(t *testing.T) {
 	aliasTool = ""
 	aliasParam = ""
 	aliasRegex = false
+	aliasRecipe = false
 	aliasMessage = ""
 }
 
@@ -609,6 +610,231 @@ func TestAliasCmdValidation(t *testing.T) {
 				t.Errorf("error %q should contain %q", err.Error(), tt.want)
 			}
 		})
+	}
+}
+
+func TestAliasCmdRecipeCreate(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--recipe", "gt await-signal", "while true; do\n  sleep 5\ndone"})
+	if err := rootCmd.Execute(); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("execute: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Rule set:") {
+		t.Errorf("expected rule set confirmation, got: %s", output)
+	}
+
+	// Verify in database.
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "gt await-signal", "Bash", "command", "gt", "recipe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.To != "while true; do\n  sleep 5\ndone" {
+		t.Errorf("got to=%q, want multi-line script", alias.To)
+	}
+	if alias.Command != "gt" {
+		t.Errorf("got command=%q, want gt", alias.Command)
+	}
+	if alias.MatchKind != "recipe" {
+		t.Errorf("got match_kind=%q, want recipe", alias.MatchKind)
+	}
+}
+
+func TestAliasCmdRecipeWithMessage(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--recipe", "bd list --wisp", "bd list | grep -i wisp", "--message", "bd has no --wisp flag"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	alias, err := s.GetAlias(context.Background(), "bd list --wisp", "Bash", "command", "bd", "recipe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == nil {
+		t.Fatal("expected alias, got nil")
+	}
+	if alias.To != "bd list | grep -i wisp" {
+		t.Errorf("got to=%q, want 'bd list | grep -i wisp'", alias.To)
+	}
+	if alias.Message != "bd has no --wisp flag" {
+		t.Errorf("got message=%q, want 'bd has no --wisp flag'", alias.Message)
+	}
+}
+
+func TestAliasCmdRecipeDelete(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	// Seed a recipe.
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt await-signal", To: "while true; do sleep 5; done",
+		Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	rootCmd.SetArgs([]string{"alias", "--db", db, "--delete", "--recipe", "gt await-signal"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	s2, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	aliases, err := s2.GetAliases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliases) != 0 {
+		t.Errorf("expected 0 aliases after delete, got %d", len(aliases))
+	}
+}
+
+func TestAliasCmdRecipeValidation(t *testing.T) {
+	resetAliasFlags(t)
+	db := filepath.Join(t.TempDir(), "test.db")
+	dbPath = db
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "recipe and cmd mutual exclusion",
+			args: []string{"alias", "--db", db, "--recipe", "--cmd", "scp", "from", "to"},
+			want: "--recipe is mutually exclusive",
+		},
+		{
+			name: "recipe and tool mutual exclusion",
+			args: []string{"alias", "--db", db, "--recipe", "--tool", "Bash", "--param", "command", "from", "to"},
+			want: "--recipe is mutually exclusive",
+		},
+		{
+			name: "recipe and flag mutual exclusion",
+			args: []string{"alias", "--db", db, "--recipe", "--cmd", "scp", "--flag", "r,R"},
+			want: "--recipe is mutually exclusive",
+		},
+		{
+			name: "recipe and replace mutual exclusion",
+			args: []string{"alias", "--db", db, "--recipe", "--cmd", "grep", "--replace", "rg"},
+			want: "--recipe is mutually exclusive",
+		},
+		{
+			name: "recipe and regex mutual exclusion",
+			args: []string{"alias", "--db", db, "--recipe", "--tool", "Bash", "--param", "command", "--regex", "from", "to"},
+			want: "--recipe is mutually exclusive",
+		},
+		{
+			name: "recipe with too few args",
+			args: []string{"alias", "--db", db, "--recipe", "only_one"},
+			want: "--recipe requires two positional arguments",
+		},
+		{
+			name: "recipe with too many args",
+			args: []string{"alias", "--db", db, "--recipe", "a", "b", "c"},
+			want: "--recipe requires two positional arguments",
+		},
+		{
+			name: "recipe delete with wrong arg count",
+			args: []string{"alias", "--db", db, "--delete", "--recipe"},
+			want: "--delete --recipe requires one positional arg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetAliasFlags(t)
+			rootCmd.SetArgs(tt.args)
+			err := rootCmd.Execute()
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error %q should contain %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractCommand(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"gt await-signal", "gt"},
+		{"bd list --wisp", "bd"},
+		{"singleword", "singleword"},
+		{"gt\tawait-signal", "gt"},
+	}
+	for _, tt := range tests {
+		got := extractCommand(tt.input)
+		if got != tt.want {
+			t.Errorf("extractCommand(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestTruncateTo(t *testing.T) {
+	tests := []struct {
+		input  string
+		maxLen int
+		want   string
+	}{
+		{"short", 40, "short"},
+		{"while true; do\n  sleep 5\ndone", 40, "while true; do   sleep 5 done"},
+		{"this is a very long string that exceeds the limit by quite a bit", 20, "this is a very lo..."},
+		{"newlines\nget\ncollapsed", 40, "newlines get collapsed"},
+	}
+	for _, tt := range tests {
+		got := truncateTo(tt.input, tt.maxLen)
+		if got != tt.want {
+			t.Errorf("truncateTo(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
+		}
 	}
 }
 
