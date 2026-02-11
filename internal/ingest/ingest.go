@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/scbrown/desire-path/internal/analyze"
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
@@ -62,12 +63,14 @@ func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sou
 
 // toDesire converts source.Fields into a model.Desire, reusing the timestamp
 // and pre-marshaled metadata from the companion invocation for consistency.
+// It also auto-categorizes the desire based on error patterns.
 func toDesire(f *source.Fields, sourceName string, ts time.Time, metadata json.RawMessage) model.Desire {
 	return model.Desire{
 		ID:        uuid.New().String(),
 		ToolName:  f.ToolName,
 		ToolInput: f.ToolInput,
 		Error:     f.Error,
+		Category:  analyze.CategorizeDesire(f.ToolName, f.Error, f.ToolInput),
 		Source:    sourceName,
 		SessionID: f.InstanceID,
 		CWD:       f.CWD,

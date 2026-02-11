@@ -60,6 +60,7 @@ type ListOpts struct {
 	Since    time.Time // Only desires after this time.
 	Source   string    // Filter by source (e.g., "claude-code").
 	ToolName string    // Filter by tool name.
+	Category string    // Filter by category (e.g., "env-need").
 	Limit    int       // Maximum results; 0 means no limit.
 }
 

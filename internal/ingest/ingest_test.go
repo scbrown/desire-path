@@ -513,6 +513,53 @@ func TestIngestNoDualWriteOnSuccess(t *testing.T) {
 	}
 }
 
+func TestIngestCategorizesEnvNeed(t *testing.T) {
+	srcName := "test-categorize-envneed"
+	registerTestSource(t, srcName, &source.Fields{
+		ToolName:  "Bash",
+		ToolInput: json.RawMessage(`{"command":"cargo-insta test"}`),
+		Error:     "bash: cargo-insta: command not found",
+	}, nil)
+
+	fs := &fakeStore{}
+	_, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(fs.desires) != 1 {
+		t.Fatalf("expected 1 desire, got %d", len(fs.desires))
+	}
+
+	d := fs.desires[0]
+	if d.Category != "env-need" {
+		t.Errorf("desire Category = %q, want %q", d.Category, "env-need")
+	}
+}
+
+func TestIngestNoCategoryForGenericBashError(t *testing.T) {
+	srcName := "test-no-category-generic"
+	registerTestSource(t, srcName, &source.Fields{
+		ToolName: "Bash",
+		Error:    "permission denied",
+	}, nil)
+
+	fs := &fakeStore{}
+	_, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(fs.desires) != 1 {
+		t.Fatalf("expected 1 desire, got %d", len(fs.desires))
+	}
+
+	d := fs.desires[0]
+	if d.Category != "" {
+		t.Errorf("desire Category = %q, want empty", d.Category)
+	}
+}
+
 func TestIngestDualWriteDesireStoreError(t *testing.T) {
 	srcName := "test-dualwrite-desire-err"
 	registerTestSource(t, srcName, &source.Fields{

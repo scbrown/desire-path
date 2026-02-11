@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	listSince  string
-	listSource string
-	listTool   string
-	listLimit  int
+	listSince    string
+	listSource   string
+	listTool     string
+	listCategory string
+	listLimit    int
 )
 
 var listCmd = &cobra.Command{
@@ -30,6 +31,7 @@ Results are ordered by timestamp, newest first.`,
   dp list --since 7d
   dp list --source claude-code --limit 20
   dp list --tool read_file --since 24h
+  dp list --category env-need
   dp list --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openStore()
@@ -41,6 +43,7 @@ Results are ordered by timestamp, newest first.`,
 		opts := store.ListOpts{
 			Source:   listSource,
 			ToolName: listTool,
+			Category: listCategory,
 			Limit:    listLimit,
 		}
 
@@ -92,6 +95,7 @@ func init() {
 	listCmd.Flags().StringVar(&listSince, "since", "", "show desires within this duration (e.g., 30m, 24h, 7d)")
 	listCmd.Flags().StringVar(&listSource, "source", "", "filter by source")
 	listCmd.Flags().StringVar(&listTool, "tool", "", "filter by tool name")
+	listCmd.Flags().StringVar(&listCategory, "category", "", "filter by category (e.g., env-need)")
 	listCmd.Flags().IntVar(&listLimit, "limit", 50, "maximum number of results")
 	rootCmd.AddCommand(listCmd)
 }

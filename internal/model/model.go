@@ -7,12 +7,19 @@ import (
 	"time"
 )
 
+// Desire categories classify the nature of a failed tool call.
+const (
+	// CategoryEnvNeed indicates a missing command or tool that could be installed.
+	CategoryEnvNeed = "env-need"
+)
+
 // Desire represents a single failed tool call from an AI coding assistant.
 type Desire struct {
 	ID        string          `json:"id"`
 	ToolName  string          `json:"tool_name"`
 	ToolInput json.RawMessage `json:"tool_input,omitempty"`
 	Error     string          `json:"error"`
+	Category  string          `json:"category,omitempty"`
 	Source    string          `json:"source,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
 	CWD       string          `json:"cwd,omitempty"`
