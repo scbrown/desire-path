@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 // SQLiteStore implements Store using a local SQLite database.
 type SQLiteStore struct {
@@ -78,6 +78,12 @@ func (s *SQLiteStore) migrate() error {
 
 	if ver < 3 {
 		if err := s.migrateV3(); err != nil {
+			return err
+		}
+	}
+
+	if ver < 4 {
+		if err := s.migrateV4(); err != nil {
 			return err
 		}
 	}
@@ -174,15 +180,30 @@ func (s *SQLiteStore) migrateV3() error {
 	return nil
 }
 
+func (s *SQLiteStore) migrateV4() error {
+	stmts := []string{
+		`ALTER TABLE desires ADD COLUMN category TEXT`,
+		`CREATE INDEX IF NOT EXISTS idx_desires_category ON desires(category)`,
+		`UPDATE schema_version SET version = 4`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v4: %w", err)
+		}
+	}
+	return nil
+}
+
 // RecordDesire persists a single failed tool call.
 func (s *SQLiteStore) RecordDesire(ctx context.Context, d model.Desire) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO desires (id, tool_name, tool_input, error, source, session_id, cwd, timestamp, metadata)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO desires (id, tool_name, tool_input, error, category, source, session_id, cwd, timestamp, metadata)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		d.ID,
 		d.ToolName,
 		nullableJSON(d.ToolInput),
 		d.Error,
+		nullableString(d.Category),
 		nullableString(d.Source),
 		nullableString(d.SessionID),
 		nullableString(d.CWD),
@@ -197,7 +218,7 @@ func (s *SQLiteStore) RecordDesire(ctx context.Context, d model.Desire) error {
 
 // ListDesires returns desires matching the given filter options.
 func (s *SQLiteStore) ListDesires(ctx context.Context, opts ListOpts) ([]model.Desire, error) {
-	query := "SELECT id, tool_name, tool_input, error, source, session_id, cwd, timestamp, metadata FROM desires WHERE 1=1"
+	query := "SELECT id, tool_name, tool_input, error, category, source, session_id, cwd, timestamp, metadata FROM desires WHERE 1=1"
 	var args []any
 
 	if !opts.Since.IsZero() {
@@ -211,6 +232,10 @@ func (s *SQLiteStore) ListDesires(ctx context.Context, opts ListOpts) ([]model.D
 	if opts.ToolName != "" {
 		query += " AND tool_name = ?"
 		args = append(args, opts.ToolName)
+	}
+	if opts.Category != "" {
+		query += " AND category = ?"
+		args = append(args, opts.Category)
 	}
 	query += " ORDER BY timestamp DESC"
 	if opts.Limit > 0 {
@@ -226,10 +251,11 @@ func (s *SQLiteStore) ListDesires(ctx context.Context, opts ListOpts) ([]model.D
 	var desires []model.Desire
 	for rows.Next() {
 		var d model.Desire
-		var toolInput, source, sessionID, cwd, ts, metadata sql.NullString
-		if err := rows.Scan(&d.ID, &d.ToolName, &toolInput, &d.Error, &source, &sessionID, &cwd, &ts, &metadata); err != nil {
+		var toolInput, category, source, sessionID, cwd, ts, metadata sql.NullString
+		if err := rows.Scan(&d.ID, &d.ToolName, &toolInput, &d.Error, &category, &source, &sessionID, &cwd, &ts, &metadata); err != nil {
 			return nil, fmt.Errorf("scan desire: %w", err)
 		}
+		d.Category = category.String
 		d.Source = source.String
 		d.SessionID = sessionID.String
 		d.CWD = cwd.String

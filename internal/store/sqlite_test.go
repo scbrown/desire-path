@@ -1036,5 +1036,73 @@ func TestInspectPathTopN(t *testing.T) {
 	}
 }
 
+func TestListDesiresCategoryFilter(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	desires := []model.Desire{
+		{ID: "d1", ToolName: "Bash", Error: "bash: cargo-insta: command not found", Category: model.CategoryEnvNeed, Timestamp: base},
+		{ID: "d2", ToolName: "Bash", Error: "permission denied", Timestamp: base.Add(time.Hour)},
+		{ID: "d3", ToolName: "Bash", Error: "bash: cargo-nextest: command not found", Category: model.CategoryEnvNeed, Timestamp: base.Add(2 * time.Hour)},
+		{ID: "d4", ToolName: "read_file", Error: "tool not found", Timestamp: base.Add(3 * time.Hour)},
+	}
+	for _, d := range desires {
+		if err := s.RecordDesire(ctx, d); err != nil {
+			t.Fatalf("RecordDesire %s: %v", d.ID, err)
+		}
+	}
+
+	// Filter by env-need category.
+	got, err := s.ListDesires(ctx, ListOpts{Category: model.CategoryEnvNeed})
+	if err != nil {
+		t.Fatalf("ListDesires by category: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("category filter: expected 2, got %d", len(got))
+	}
+	for _, d := range got {
+		if d.Category != model.CategoryEnvNeed {
+			t.Errorf("expected category %q, got %q", model.CategoryEnvNeed, d.Category)
+		}
+	}
+
+	// All desires without category filter.
+	all, err := s.ListDesires(ctx, ListOpts{})
+	if err != nil {
+		t.Fatalf("ListDesires all: %v", err)
+	}
+	if len(all) != 4 {
+		t.Errorf("all: expected 4, got %d", len(all))
+	}
+}
+
+func TestRecordDesireCategoryRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	d := model.Desire{
+		ID:        "cat-1",
+		ToolName:  "Bash",
+		Error:     "bash: rg: command not found",
+		Category:  model.CategoryEnvNeed,
+		Timestamp: time.Now().UTC(),
+	}
+	if err := s.RecordDesire(ctx, d); err != nil {
+		t.Fatalf("RecordDesire: %v", err)
+	}
+
+	got, err := s.ListDesires(ctx, ListOpts{})
+	if err != nil {
+		t.Fatalf("ListDesires: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	if got[0].Category != model.CategoryEnvNeed {
+		t.Errorf("category: got %q, want %q", got[0].Category, model.CategoryEnvNeed)
+	}
+}
+
 // Verify SQLiteStore satisfies the Store interface at compile time.
 var _ Store = (*SQLiteStore)(nil)

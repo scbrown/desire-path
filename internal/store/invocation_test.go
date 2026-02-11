@@ -761,13 +761,13 @@ func TestMigrateV2FreshDB(t *testing.T) {
 	}
 	defer s.Close()
 
-	// Verify schema_version is 3.
+	// Verify schema_version is current.
 	var ver int
 	if err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&ver); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if ver != 3 {
-		t.Errorf("schema version: got %d, want 3", ver)
+	if ver != schemaVersion {
+		t.Errorf("schema version: got %d, want %d", ver, schemaVersion)
 	}
 
 	// Verify invocations table exists by inserting.
@@ -851,13 +851,13 @@ func TestMigrateV2OnExistingV1DB(t *testing.T) {
 	}
 	defer s.Close()
 
-	// Verify version upgraded to 3.
+	// Verify version upgraded to current.
 	var ver int
 	if err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&ver); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if ver != 3 {
-		t.Errorf("schema version after upgrade: got %d, want 3", ver)
+	if ver != schemaVersion {
+		t.Errorf("schema version after upgrade: got %d, want %d", ver, schemaVersion)
 	}
 
 	ctx := context.Background()
