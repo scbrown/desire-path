@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/spf13/cobra"
@@ -13,13 +14,14 @@ import (
 // Alias command flags.
 var (
 	aliasDelete  bool
-	aliasCmd_    string // --cmd
+	aliasCmd_    string   // --cmd
 	aliasFlag    []string // --flag OLD NEW
-	aliasReplace string // --replace NEW
-	aliasTool    string // --tool
-	aliasParam   string // --param
-	aliasRegex   bool   // --regex
-	aliasMessage string // --message
+	aliasReplace string   // --replace NEW
+	aliasTool    string   // --tool
+	aliasParam   string   // --param
+	aliasRegex   bool     // --regex
+	aliasRecipe  bool     // --recipe
+	aliasMessage string   // --message
 )
 
 var aliasCmd = &cobra.Command{
@@ -45,13 +47,22 @@ Advanced / MCP tools (--tool + --param):
   dp alias --tool MyMCPTool --param input_path "/old/path" "/new/path"
   dp alias --tool Bash --param command --regex "curl -k" "curl --cacert cert.pem"
 
+Recipe (whole-command replacement with a script):
+  dp alias --recipe "gt await-signal" 'while true; do
+    status=$(gt mol status 2>&1)
+    if echo "$status" | grep -q "signaled"; then break; fi
+    sleep 5
+  done'
+
 Delete (specify same flags to identify the rule):
   dp alias --delete read_file
   dp alias --delete --cmd scp --flag r
-  dp alias --delete --cmd grep --replace rg`,
+  dp alias --delete --cmd grep --replace rg
+  dp alias --delete --recipe "gt await-signal"`,
 	Example: `  dp alias read_file Read
   dp alias --cmd scp --flag r R
   dp alias --cmd grep --replace rg --message "Use ripgrep"
+  dp alias --recipe "gt await-signal" 'while true; do ...; done'
   dp alias --delete read_file`,
 	RunE: runAlias,
 }
@@ -75,6 +86,7 @@ func init() {
 	aliasCmd.Flags().StringVar(&aliasTool, "tool", "", "tool name for parameter corrections (advanced)")
 	aliasCmd.Flags().StringVar(&aliasParam, "param", "", "parameter name to correct (requires --tool)")
 	aliasCmd.Flags().BoolVar(&aliasRegex, "regex", false, "treat FROM as a regex pattern (requires --tool/--param)")
+	aliasCmd.Flags().BoolVar(&aliasRecipe, "recipe", false, "whole-command replacement with a script (FROM is a command prefix)")
 	aliasCmd.Flags().StringVar(&aliasMessage, "message", "", "custom message shown when correction fires")
 	rootCmd.AddCommand(aliasCmd)
 	rootCmd.AddCommand(aliasesCmd)
@@ -115,6 +127,9 @@ func buildAlias(args []string) (model.Alias, error) {
 	}
 	if len(aliasFlag) > 0 && aliasReplace != "" {
 		return a, fmt.Errorf("--flag and --replace are mutually exclusive")
+	}
+	if aliasRecipe && (aliasCmd_ != "" || aliasTool != "" || aliasParam != "" || len(aliasFlag) > 0 || aliasReplace != "" || aliasRegex) {
+		return a, fmt.Errorf("--recipe is mutually exclusive with --cmd/--tool/--param/--flag/--replace/--regex")
 	}
 
 	a.Message = aliasMessage
@@ -202,6 +217,31 @@ func buildAlias(args []string) (model.Alias, error) {
 		return a, nil
 	}
 
+	// Mode 6: --recipe (whole-command replacement)
+	if aliasRecipe {
+		if aliasDelete {
+			if len(args) != 1 {
+				return a, fmt.Errorf("--delete --recipe requires one positional arg (the FROM command prefix)")
+			}
+			a.From = args[0]
+			a.Tool = "Bash"
+			a.Param = "command"
+			a.Command = extractCommand(args[0])
+			a.MatchKind = "recipe"
+			return a, nil
+		}
+		if len(args) != 2 {
+			return a, fmt.Errorf("--recipe requires two positional arguments: FROM SCRIPT")
+		}
+		a.From = args[0]
+		a.To = args[1]
+		a.Tool = "Bash"
+		a.Param = "command"
+		a.Command = extractCommand(args[0])
+		a.MatchKind = "recipe"
+		return a, nil
+	}
+
 	// Mode 5: Plain tool name alias (positional args only)
 	if aliasDelete {
 		if len(args) != 1 {
@@ -216,6 +256,25 @@ func buildAlias(args []string) (model.Alias, error) {
 	a.From = args[0]
 	a.To = args[1]
 	return a, nil
+}
+
+// truncateTo collapses newlines to spaces and truncates to maxLen with "..." suffix.
+func truncateTo(s string, maxLen int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// extractCommand returns the first whitespace-delimited token from s.
+// Used to populate the Command field for recipe aliases (e.g., "gt await-signal" → "gt").
+func extractCommand(s string) string {
+	if i := strings.IndexAny(s, " \t"); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // aliasResult is the JSON structure for alias mutation results.
@@ -305,7 +364,7 @@ func listAliases() error {
 		if a.MatchKind != "" {
 			kind = a.MatchKind
 		}
-		tbl.Row(a.From, a.To, kind, a.Command, a.CreatedAt.Format("2006-01-02 15:04:05"))
+		tbl.Row(a.From, truncateTo(a.To, 40), kind, a.Command, a.CreatedAt.Format("2006-01-02 15:04:05"))
 	}
 	return tbl.Flush()
 }
