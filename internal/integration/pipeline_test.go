@@ -420,3 +420,34 @@ func TestPaveRequiresFlag(t *testing.T) {
 		t.Errorf("expected error to mention flags, got: %q", stderr)
 	}
 }
+
+// TestPaveAgentsMDAppendIsAdditive verifies that running dp pave --agents-md
+// --append twice duplicates the rule block. This documents current behavior:
+// append is blind (no deduplication). If deduplication is later added, this
+// test will break and force a deliberate decision.
+func TestPaveAgentsMDAppendIsAdditive(t *testing.T) {
+	e := newEnv(t)
+
+	// Create alias.
+	e.mustRun(nil, "alias", "foo", "Bar")
+
+	agentsPath := filepath.Join(e.home, "AGENTS.md")
+
+	// First append.
+	e.mustRun(nil, "pave", "--agents-md", "--append", agentsPath)
+
+	// Second append — should duplicate the rule block.
+	e.mustRun(nil, "pave", "--agents-md", "--append", agentsPath)
+
+	// Read back and verify the rule appears twice.
+	data := e.readFile(agentsPath)
+	rule := "Do NOT call `foo`. Use `Bar` instead."
+	first := strings.Index(data, rule)
+	if first == -1 {
+		t.Fatalf("rule not found in:\n%s", data)
+	}
+	second := strings.Index(data[first+len(rule):], rule)
+	if second == -1 {
+		t.Errorf("expected rule block to appear twice (blind append), but found only once in:\n%s", data)
+	}
+}
