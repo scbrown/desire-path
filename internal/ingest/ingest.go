@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/scbrown/desire-path/internal/analyze"
+	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
@@ -64,6 +65,14 @@ func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sou
 		if err := s.RecordDesire(ctx, d); err != nil {
 			return model.Invocation{}, fmt.Errorf("storing desire: %w", err)
 		}
+	}
+
+	// Surface recurring turn patterns as desire paths. Only trigger the
+	// (relatively expensive) pattern analysis when the current invocation
+	// belongs to a turn that exceeds the configured threshold.
+	if inv.TurnLength >= config.DefaultTurnLengthThreshold {
+		// Best-effort: surfacing failures don't block ingest.
+		analyze.SurfaceTurnPatternDesires(ctx, s, config.DefaultTurnLengthThreshold)
 	}
 
 	return inv, nil

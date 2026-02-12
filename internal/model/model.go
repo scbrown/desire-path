@@ -11,6 +11,10 @@ import (
 const (
 	// CategoryEnvNeed indicates a missing command or tool that could be installed.
 	CategoryEnvNeed = "env-need"
+
+	// CategoryTurnPattern indicates a recurring multi-tool turn pattern that
+	// signals the agent's intent didn't map cleanly to available tools.
+	CategoryTurnPattern = "turn-pattern"
 )
 
 // Desire represents a single failed tool call from an AI coding assistant.
