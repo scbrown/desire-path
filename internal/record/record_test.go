@@ -54,6 +54,15 @@ func (f *fakeStore) ListInvocations(_ context.Context, _ store.InvocationOpts) (
 func (f *fakeStore) InvocationStats(_ context.Context) (store.InvocationStatsResult, error) {
 	return store.InvocationStatsResult{}, nil
 }
+func (f *fakeStore) ListTurns(context.Context, store.TurnOpts) ([]store.TurnRow, error) {
+	return nil, nil
+}
+func (f *fakeStore) TurnPatternStats(context.Context, store.TurnOpts) ([]store.TurnPattern, error) {
+	return nil, nil
+}
+func (f *fakeStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.ToolTurnStat, error) {
+	return nil, nil
+}
 func (f *fakeStore) Close() error { return nil }
 
 func TestRecord(t *testing.T) {

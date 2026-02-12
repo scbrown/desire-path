@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 // SQLiteStore implements Store using a local SQLite database.
 type SQLiteStore struct {
@@ -84,6 +85,12 @@ func (s *SQLiteStore) migrate() error {
 
 	if ver < 4 {
 		if err := s.migrateV4(); err != nil {
+			return err
+		}
+	}
+
+	if ver < 5 {
+		if err := s.migrateV5(); err != nil {
 			return err
 		}
 	}
@@ -189,6 +196,23 @@ func (s *SQLiteStore) migrateV4() error {
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate v4: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) migrateV5() error {
+	stmts := []string{
+		`ALTER TABLE invocations ADD COLUMN turn_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE invocations ADD COLUMN turn_sequence INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE invocations ADD COLUMN turn_length INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_turn_id ON invocations(turn_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_invocations_turn_length ON invocations(turn_length)`,
+		`UPDATE schema_version SET version = 5`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v5: %w", err)
 		}
 	}
 	return nil
@@ -621,8 +645,8 @@ func (s *SQLiteStore) InspectPath(ctx context.Context, opts InspectOpts) (*Inspe
 // RecordInvocation persists a single tool invocation.
 func (s *SQLiteStore) RecordInvocation(ctx context.Context, inv model.Invocation) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO invocations (id, source, instance_id, host_id, tool_name, is_error, error, cwd, timestamp, metadata)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO invocations (id, source, instance_id, host_id, tool_name, is_error, error, cwd, timestamp, metadata, turn_id, turn_sequence, turn_length)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		inv.ID,
 		inv.Source,
 		nullableString(inv.InstanceID),
@@ -633,6 +657,9 @@ func (s *SQLiteStore) RecordInvocation(ctx context.Context, inv model.Invocation
 		nullableString(inv.CWD),
 		inv.Timestamp.UTC().Format(time.RFC3339Nano),
 		nullableJSON(inv.Metadata),
+		inv.TurnID,
+		inv.TurnSequence,
+		inv.TurnLength,
 	)
 	if err != nil {
 		return fmt.Errorf("insert invocation: %w", err)
@@ -642,7 +669,7 @@ func (s *SQLiteStore) RecordInvocation(ctx context.Context, inv model.Invocation
 
 // ListInvocations returns invocations matching the given filter options.
 func (s *SQLiteStore) ListInvocations(ctx context.Context, opts InvocationOpts) ([]model.Invocation, error) {
-	query := "SELECT id, source, instance_id, host_id, tool_name, is_error, error, cwd, timestamp, metadata FROM invocations WHERE 1=1"
+	query := "SELECT id, source, instance_id, host_id, tool_name, is_error, error, cwd, timestamp, metadata, turn_id, turn_sequence, turn_length FROM invocations WHERE 1=1"
 	var args []any
 
 	if !opts.Since.IsZero() {
@@ -680,7 +707,7 @@ func (s *SQLiteStore) ListInvocations(ctx context.Context, opts InvocationOpts) 
 		var inv model.Invocation
 		var instanceID, hostID, errStr, cwd, ts, metadata sql.NullString
 		var isError int
-		if err := rows.Scan(&inv.ID, &inv.Source, &instanceID, &hostID, &inv.ToolName, &isError, &errStr, &cwd, &ts, &metadata); err != nil {
+		if err := rows.Scan(&inv.ID, &inv.Source, &instanceID, &hostID, &inv.ToolName, &isError, &errStr, &cwd, &ts, &metadata, &inv.TurnID, &inv.TurnSequence, &inv.TurnLength); err != nil {
 			return nil, fmt.Errorf("scan invocation: %w", err)
 		}
 		inv.InstanceID = instanceID.String
@@ -782,9 +809,214 @@ func (s *SQLiteStore) InvocationStats(ctx context.Context) (InvocationStatsResul
 	return st, nil
 }
 
+// ListTurns returns turns (grouped invocations) matching the given options.
+// Each TurnRow represents one turn with its tool sequence.
+func (s *SQLiteStore) ListTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, error) {
+	// Use a subquery ordered by turn_sequence to guarantee GROUP_CONCAT
+	// produces tools in the correct execution order.
+	where := "WHERE turn_id != '' AND turn_length > 0"
+	var args []any
+
+	if opts.MinLength > 0 {
+		where += " AND turn_length >= ?"
+		args = append(args, opts.MinLength)
+	}
+	if !opts.Since.IsZero() {
+		where += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	if opts.SessionID != "" {
+		where += " AND instance_id = ?"
+		args = append(args, opts.SessionID)
+	}
+
+	query := fmt.Sprintf(`SELECT turn_id, instance_id, turn_length, GROUP_CONCAT(tool_name, ' → ')
+		FROM (SELECT * FROM invocations %s ORDER BY turn_sequence)
+		GROUP BY turn_id ORDER BY turn_length DESC`, where)
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list turns: %w", err)
+	}
+	defer rows.Close()
+
+	var turns []TurnRow
+	for rows.Next() {
+		var tr TurnRow
+		var sessionID sql.NullString
+		if err := rows.Scan(&tr.TurnID, &sessionID, &tr.Length, &tr.Tools); err != nil {
+			return nil, fmt.Errorf("scan turn: %w", err)
+		}
+		tr.SessionID = sessionID.String
+		turns = append(turns, tr)
+	}
+	return turns, rows.Err()
+}
+
+// TurnPatternStats returns aggregated turn patterns with their counts.
+func (s *SQLiteStore) TurnPatternStats(ctx context.Context, opts TurnOpts) ([]TurnPattern, error) {
+	// First get all qualifying turns with their tool sequences.
+	where := "WHERE turn_id != '' AND turn_length > 0"
+	var args []any
+
+	if opts.MinLength > 0 {
+		where += " AND turn_length >= ?"
+		args = append(args, opts.MinLength)
+	}
+	if !opts.Since.IsZero() {
+		where += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+
+	query := fmt.Sprintf(`SELECT turn_id, instance_id, turn_length, GROUP_CONCAT(tool_name, ' → ')
+		FROM (SELECT * FROM invocations %s ORDER BY turn_sequence)
+		GROUP BY turn_id ORDER BY turn_length DESC`, where)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("turn patterns: %w", err)
+	}
+	defer rows.Close()
+
+	// Collect turn tool sequences and fuzz to abstract patterns.
+	type rawTurn struct {
+		tools     string
+		length    int
+		sessionID string
+	}
+	patternMap := make(map[string]*TurnPattern)
+	var patternOrder []string
+
+	for rows.Next() {
+		var turnID string
+		var rt rawTurn
+		var sessionID sql.NullString
+		if err := rows.Scan(&turnID, &sessionID, &rt.length, &rt.tools); err != nil {
+			return nil, fmt.Errorf("scan turn pattern: %w", err)
+		}
+		rt.sessionID = sessionID.String
+
+		abstract := fuzzToolSequence(rt.tools)
+		if tp, ok := patternMap[abstract]; ok {
+			tp.Count++
+			tp.TotalLength += rt.length
+			tp.sessions[rt.sessionID] = true
+		} else {
+			tp := &TurnPattern{
+				Pattern:     abstract,
+				Count:       1,
+				TotalLength: rt.length,
+				sessions:    map[string]bool{rt.sessionID: true},
+			}
+			patternMap[abstract] = tp
+			patternOrder = append(patternOrder, abstract)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var patterns []TurnPattern
+	for _, key := range patternOrder {
+		tp := patternMap[key]
+		tp.AvgLength = float64(tp.TotalLength) / float64(tp.Count)
+		tp.Sessions = len(tp.sessions)
+		patterns = append(patterns, *tp)
+	}
+
+	// Sort by count descending.
+	sortTurnPatterns(patterns)
+
+	if opts.Limit > 0 && len(patterns) > opts.Limit {
+		patterns = patterns[:opts.Limit]
+	}
+
+	return patterns, nil
+}
+
+// ToolTurnStats returns per-tool turn statistics for the paths --turns view.
+func (s *SQLiteStore) ToolTurnStats(ctx context.Context, opts TurnOpts) ([]ToolTurnStat, error) {
+	query := `SELECT tool_name, COUNT(*) as cnt,
+		AVG(turn_length) as avg_len,
+		SUM(CASE WHEN turn_length >= ? THEN 1 ELSE 0 END) as long_count
+		FROM invocations
+		WHERE turn_id != '' AND turn_length > 0`
+
+	threshold := opts.MinLength
+	if threshold <= 0 {
+		threshold = 5
+	}
+	args := []any{threshold}
+
+	if !opts.Since.IsZero() {
+		query += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+
+	query += " GROUP BY tool_name ORDER BY cnt DESC"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("tool turn stats: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []ToolTurnStat
+	for rows.Next() {
+		var ts ToolTurnStat
+		if err := rows.Scan(&ts.ToolName, &ts.Count, &ts.AvgTurnLen, &ts.LongCount); err != nil {
+			return nil, fmt.Errorf("scan tool turn stat: %w", err)
+		}
+		if ts.Count > 0 {
+			ts.LongTurnPct = float64(ts.LongCount) / float64(ts.Count) * 100
+		}
+		stats = append(stats, ts)
+	}
+	return stats, rows.Err()
+}
+
 // Close releases the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
+}
+
+// fuzzToolSequence collapses consecutive repeated tool names in a sequence
+// like "Grep → Read → Read → Read → Edit" into "Grep → Read{3+} → Edit".
+func fuzzToolSequence(tools string) string {
+	parts := strings.Split(tools, " → ")
+	if len(parts) <= 1 {
+		return tools
+	}
+
+	var result []string
+	i := 0
+	for i < len(parts) {
+		name := parts[i]
+		count := 1
+		for i+count < len(parts) && parts[i+count] == name {
+			count++
+		}
+		if count >= 2 {
+			result = append(result, fmt.Sprintf("%s{%d+}", name, count))
+		} else {
+			result = append(result, name)
+		}
+		i += count
+	}
+	return strings.Join(result, " → ")
+}
+
+// sortTurnPatterns sorts patterns by count descending.
+func sortTurnPatterns(patterns []TurnPattern) {
+	sort.Slice(patterns, func(i, j int) bool {
+		return patterns[i].Count > patterns[j].Count
+	})
 }
 
 // boolToInt converts a bool to an integer for SQLite storage.

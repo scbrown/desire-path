@@ -45,6 +45,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/invocations", s.handleRecordInvocation)
 	s.mux.HandleFunc("GET /api/v1/invocations", s.handleListInvocations)
 	s.mux.HandleFunc("GET /api/v1/invocations/stats", s.handleInvocationStats)
+	s.mux.HandleFunc("GET /api/v1/turns", s.handleListTurns)
+	s.mux.HandleFunc("GET /api/v1/turns/patterns", s.handleTurnPatterns)
+	s.mux.HandleFunc("GET /api/v1/turns/tool-stats", s.handleToolTurnStats)
 	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 }
 
@@ -300,6 +303,57 @@ func (s *Server) handleInvocationStats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "getting invocation stats: %v", err)
 		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleListTurns(w http.ResponseWriter, r *http.Request) {
+	opts, err := parseTurnOpts(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	turns, err := s.store.ListTurns(r.Context(), opts)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "listing turns: %v", err)
+		return
+	}
+	if turns == nil {
+		turns = []store.TurnRow{}
+	}
+	writeJSON(w, http.StatusOK, turns)
+}
+
+func (s *Server) handleTurnPatterns(w http.ResponseWriter, r *http.Request) {
+	opts, err := parseTurnOpts(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	patterns, err := s.store.TurnPatternStats(r.Context(), opts)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "turn patterns: %v", err)
+		return
+	}
+	if patterns == nil {
+		patterns = []store.TurnPattern{}
+	}
+	writeJSON(w, http.StatusOK, patterns)
+}
+
+func (s *Server) handleToolTurnStats(w http.ResponseWriter, r *http.Request) {
+	opts, err := parseTurnOpts(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	stats, err := s.store.ToolTurnStats(r.Context(), opts)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "tool turn stats: %v", err)
+		return
+	}
+	if stats == nil {
+		stats = []store.ToolTurnStat{}
 	}
 	writeJSON(w, http.StatusOK, stats)
 }
