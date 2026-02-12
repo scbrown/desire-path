@@ -207,6 +207,31 @@ func (e *dpEnv) kiroFixture(toolName, errMsg string) []byte {
 	return data
 }
 
+// cursorFixture returns a Cursor IDE hook JSON payload.
+// If errMsg is non-empty, it creates a postToolUseFailure event with
+// error_message set (triggering error detection in the cursor plugin).
+// Otherwise it creates a postToolUse event.
+func (e *dpEnv) cursorFixture(toolName, errMsg string) []byte {
+	e.t.Helper()
+	m := map[string]interface{}{
+		"tool_name":       toolName,
+		"cwd":             e.home,
+		"conversation_id": "conv-test",
+	}
+	if errMsg != "" {
+		m["hook_event_name"] = "postToolUseFailure"
+		m["error_message"] = errMsg
+	} else {
+		m["hook_event_name"] = "postToolUse"
+		m["tool_output"] = "success"
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		e.t.Fatalf("marshal cursor fixture: %v", err)
+	}
+	return data
+}
+
 // codexFixture returns a Codex CLI item.completed JSON payload.
 // If errMsg is non-empty, item.status is set to "failed" (triggering error
 // detection in the codex plugin).
