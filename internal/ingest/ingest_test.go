@@ -79,6 +79,12 @@ func (f *fakeStore) ListInvocations(context.Context, store.InvocationOpts) ([]mo
 func (f *fakeStore) InvocationStats(context.Context) (store.InvocationStatsResult, error) {
 	return store.InvocationStatsResult{}, nil
 }
+func (f *fakeStore) GetTurns(context.Context, store.TurnOpts) ([]store.TurnRow, error) {
+	return nil, nil
+}
+func (f *fakeStore) GetPathTurnStats(context.Context, int, time.Time) ([]store.ToolTurnStats, error) {
+	return nil, nil
+}
 func (f *fakeStore) Close() error { return nil }
 
 // registerTestSource registers a fake source and returns a cleanup function

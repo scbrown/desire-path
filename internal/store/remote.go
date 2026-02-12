@@ -300,6 +300,40 @@ func (r *RemoteStore) InvocationStats(ctx context.Context) (InvocationStatsResul
 	return stats, nil
 }
 
+func (r *RemoteStore) GetTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, error) {
+	q := url.Values{}
+	if opts.MinLength > 0 {
+		q.Set("min_length", strconv.Itoa(opts.MinLength))
+	}
+	if !opts.Since.IsZero() {
+		q.Set("since", opts.Since.UTC().Format(time.RFC3339))
+	}
+	if opts.SessionID != "" {
+		q.Set("session", opts.SessionID)
+	}
+	if opts.Limit > 0 {
+		q.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	var turns []TurnRow
+	if err := r.getJSON(ctx, "/api/v1/turns", q, &turns); err != nil {
+		return nil, err
+	}
+	return turns, nil
+}
+
+func (r *RemoteStore) GetPathTurnStats(ctx context.Context, threshold int, since time.Time) ([]ToolTurnStats, error) {
+	q := url.Values{}
+	q.Set("threshold", strconv.Itoa(threshold))
+	if !since.IsZero() {
+		q.Set("since", since.UTC().Format(time.RFC3339))
+	}
+	var stats []ToolTurnStats
+	if err := r.getJSON(ctx, "/api/v1/turns/stats", q, &stats); err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
 // Close is a no-op for the remote store.
 func (r *RemoteStore) Close() error {
 	return nil

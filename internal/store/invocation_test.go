@@ -1105,6 +1105,266 @@ func TestMigrateV2Idempotent(t *testing.T) {
 	}
 }
 
+func TestGetTurnsBasic(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
+
+	// Two turns: turn sess1:0 has 3 tools, turn sess1:1 has 6 tools.
+	invocations := []model.Invocation{
+		{ID: "t1-0", Source: "cc", ToolName: "Grep", Timestamp: base, TurnID: "sess1:0", TurnSequence: 0, TurnLength: 3},
+		{ID: "t1-1", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Second), TurnID: "sess1:0", TurnSequence: 1, TurnLength: 3},
+		{ID: "t1-2", Source: "cc", ToolName: "Edit", Timestamp: base.Add(2 * time.Second), TurnID: "sess1:0", TurnSequence: 2, TurnLength: 3},
+		{ID: "t2-0", Source: "cc", ToolName: "Grep", Timestamp: base.Add(time.Minute), TurnID: "sess1:1", TurnSequence: 0, TurnLength: 6},
+		{ID: "t2-1", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + time.Second), TurnID: "sess1:1", TurnSequence: 1, TurnLength: 6},
+		{ID: "t2-2", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + 2*time.Second), TurnID: "sess1:1", TurnSequence: 2, TurnLength: 6},
+		{ID: "t2-3", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + 3*time.Second), TurnID: "sess1:1", TurnSequence: 3, TurnLength: 6},
+		{ID: "t2-4", Source: "cc", ToolName: "Edit", Timestamp: base.Add(time.Minute + 4*time.Second), TurnID: "sess1:1", TurnSequence: 4, TurnLength: 6},
+		{ID: "t2-5", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + 5*time.Second), TurnID: "sess1:1", TurnSequence: 5, TurnLength: 6},
+	}
+	for _, inv := range invocations {
+		if err := s.RecordInvocation(ctx, inv); err != nil {
+			t.Fatalf("RecordInvocation %s: %v", inv.ID, err)
+		}
+	}
+
+	// MinLength=5 should only return the 6-tool turn.
+	turns, err := s.GetTurns(ctx, TurnOpts{MinLength: 5})
+	if err != nil {
+		t.Fatalf("GetTurns: %v", err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("expected 1 turn, got %d", len(turns))
+	}
+	if turns[0].TurnID != "sess1:1" {
+		t.Errorf("TurnID: got %q, want sess1:1", turns[0].TurnID)
+	}
+	if turns[0].SessionID != "sess1" {
+		t.Errorf("SessionID: got %q, want sess1", turns[0].SessionID)
+	}
+	if turns[0].TurnIndex != 1 {
+		t.Errorf("TurnIndex: got %d, want 1", turns[0].TurnIndex)
+	}
+	if turns[0].Length != 6 {
+		t.Errorf("Length: got %d, want 6", turns[0].Length)
+	}
+	if len(turns[0].Tools) != 6 {
+		t.Fatalf("Tools: expected 6, got %d", len(turns[0].Tools))
+	}
+	expectedTools := []string{"Grep", "Read", "Read", "Read", "Edit", "Read"}
+	for i, tool := range expectedTools {
+		if turns[0].Tools[i] != tool {
+			t.Errorf("Tools[%d]: got %q, want %q", i, turns[0].Tools[i], tool)
+		}
+	}
+
+	// MinLength=1 should return both turns (newest first).
+	turns, err = s.GetTurns(ctx, TurnOpts{MinLength: 1})
+	if err != nil {
+		t.Fatalf("GetTurns: %v", err)
+	}
+	if len(turns) != 2 {
+		t.Fatalf("expected 2 turns, got %d", len(turns))
+	}
+	if turns[0].TurnID != "sess1:1" {
+		t.Errorf("first turn: got %q, want sess1:1", turns[0].TurnID)
+	}
+	if turns[1].TurnID != "sess1:0" {
+		t.Errorf("second turn: got %q, want sess1:0", turns[1].TurnID)
+	}
+}
+
+func TestGetTurnsFilters(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
+
+	// Session 1: 1 turn of length 4.
+	for i := 0; i < 4; i++ {
+		if err := s.RecordInvocation(ctx, model.Invocation{
+			ID:           fmt.Sprintf("s1t0-%d", i),
+			Source:       "cc",
+			ToolName:     "Read",
+			Timestamp:    base.Add(time.Duration(i) * time.Second),
+			TurnID:       "sess1:0",
+			TurnSequence: i,
+			TurnLength:   4,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Session 2: 1 turn of length 5, 1 hour later.
+	for i := 0; i < 5; i++ {
+		if err := s.RecordInvocation(ctx, model.Invocation{
+			ID:           fmt.Sprintf("s2t0-%d", i),
+			Source:       "cc",
+			ToolName:     "Bash",
+			Timestamp:    base.Add(time.Hour + time.Duration(i)*time.Second),
+			TurnID:       "sess2:0",
+			TurnSequence: i,
+			TurnLength:   5,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Filter by session.
+	turns, err := s.GetTurns(ctx, TurnOpts{MinLength: 1, SessionID: "sess1"})
+	if err != nil {
+		t.Fatalf("GetTurns session filter: %v", err)
+	}
+	if len(turns) != 1 {
+		t.Errorf("session filter: expected 1, got %d", len(turns))
+	}
+
+	// Filter by since.
+	turns, err = s.GetTurns(ctx, TurnOpts{MinLength: 1, Since: base.Add(30 * time.Minute)})
+	if err != nil {
+		t.Fatalf("GetTurns since filter: %v", err)
+	}
+	if len(turns) != 1 {
+		t.Errorf("since filter: expected 1, got %d", len(turns))
+	}
+	if len(turns) > 0 && turns[0].TurnID != "sess2:0" {
+		t.Errorf("since filter: got %q, want sess2:0", turns[0].TurnID)
+	}
+
+	// Limit.
+	turns, err = s.GetTurns(ctx, TurnOpts{MinLength: 1, Limit: 1})
+	if err != nil {
+		t.Fatalf("GetTurns limit: %v", err)
+	}
+	if len(turns) != 1 {
+		t.Errorf("limit: expected 1, got %d", len(turns))
+	}
+}
+
+func TestGetTurnsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	turns, err := s.GetTurns(ctx, TurnOpts{MinLength: 5})
+	if err != nil {
+		t.Fatalf("GetTurns: %v", err)
+	}
+	if len(turns) != 0 {
+		t.Errorf("expected 0 turns, got %d", len(turns))
+	}
+}
+
+func TestGetTurnsNoTurnData(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Invocations without turn data should not appear.
+	if err := s.RecordInvocation(ctx, model.Invocation{
+		ID: "noturn", Source: "cc", ToolName: "Read", Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	turns, err := s.GetTurns(ctx, TurnOpts{MinLength: 1})
+	if err != nil {
+		t.Fatalf("GetTurns: %v", err)
+	}
+	if len(turns) != 0 {
+		t.Errorf("expected 0 turns for data without turn_id, got %d", len(turns))
+	}
+}
+
+func TestGetPathTurnStatsBasic(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
+
+	// Turn 1: length 3, tools: Grep, Read, Edit
+	invocations := []model.Invocation{
+		{ID: "ts1-0", Source: "cc", ToolName: "Grep", Timestamp: base, TurnID: "s:0", TurnSequence: 0, TurnLength: 3},
+		{ID: "ts1-1", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Second), TurnID: "s:0", TurnSequence: 1, TurnLength: 3},
+		{ID: "ts1-2", Source: "cc", ToolName: "Edit", Timestamp: base.Add(2 * time.Second), TurnID: "s:0", TurnSequence: 2, TurnLength: 3},
+		// Turn 2: length 7, tools: Grep, Read, Read, Read, Edit, Read, Edit
+		{ID: "ts2-0", Source: "cc", ToolName: "Grep", Timestamp: base.Add(time.Minute), TurnID: "s:1", TurnSequence: 0, TurnLength: 7},
+		{ID: "ts2-1", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + time.Second), TurnID: "s:1", TurnSequence: 1, TurnLength: 7},
+		{ID: "ts2-2", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + 2*time.Second), TurnID: "s:1", TurnSequence: 2, TurnLength: 7},
+		{ID: "ts2-3", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + 3*time.Second), TurnID: "s:1", TurnSequence: 3, TurnLength: 7},
+		{ID: "ts2-4", Source: "cc", ToolName: "Edit", Timestamp: base.Add(time.Minute + 4*time.Second), TurnID: "s:1", TurnSequence: 4, TurnLength: 7},
+		{ID: "ts2-5", Source: "cc", ToolName: "Read", Timestamp: base.Add(time.Minute + 5*time.Second), TurnID: "s:1", TurnSequence: 5, TurnLength: 7},
+		{ID: "ts2-6", Source: "cc", ToolName: "Edit", Timestamp: base.Add(time.Minute + 6*time.Second), TurnID: "s:1", TurnSequence: 6, TurnLength: 7},
+	}
+	for _, inv := range invocations {
+		if err := s.RecordInvocation(ctx, inv); err != nil {
+			t.Fatalf("RecordInvocation %s: %v", inv.ID, err)
+		}
+	}
+
+	stats, err := s.GetPathTurnStats(ctx, 5, time.Time{})
+	if err != nil {
+		t.Fatalf("GetPathTurnStats: %v", err)
+	}
+
+	statsMap := make(map[string]ToolTurnStats)
+	for _, s := range stats {
+		statsMap[s.ToolName] = s
+	}
+
+	// Grep: appears in turn of length 3 and turn of length 7. Avg = (3+7)/2 = 5.0.
+	// Long turn (>5): 1 out of 2 = 50%.
+	grep := statsMap["Grep"]
+	if grep.AvgTurnLen != 5.0 {
+		t.Errorf("Grep AvgTurnLen: got %.1f, want 5.0", grep.AvgTurnLen)
+	}
+	if grep.LongTurnPct != 50.0 {
+		t.Errorf("Grep LongTurnPct: got %.1f, want 50.0", grep.LongTurnPct)
+	}
+
+	// Read: 1 in turn 3, 4 in turn 7. Avg = (3 + 7*4) / 5 = 31/5 = 6.2.
+	// Long turns: 4 out of 5 = 80%.
+	read := statsMap["Read"]
+	expectedAvg := (3.0 + 7.0*4) / 5.0
+	if read.AvgTurnLen < expectedAvg-0.1 || read.AvgTurnLen > expectedAvg+0.1 {
+		t.Errorf("Read AvgTurnLen: got %.1f, want %.1f", read.AvgTurnLen, expectedAvg)
+	}
+	if read.LongTurnPct != 80.0 {
+		t.Errorf("Read LongTurnPct: got %.1f, want 80.0", read.LongTurnPct)
+	}
+}
+
+func TestGetPathTurnStatsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	stats, err := s.GetPathTurnStats(ctx, 5, time.Time{})
+	if err != nil {
+		t.Fatalf("GetPathTurnStats: %v", err)
+	}
+	if len(stats) != 0 {
+		t.Errorf("expected 0 stats, got %d", len(stats))
+	}
+}
+
+func TestParseTurnID(t *testing.T) {
+	tests := []struct {
+		turnID    string
+		sessionID string
+		index     int
+	}{
+		{"sess1:3", "sess1", 3},
+		{"abc-def-ghi:0", "abc-def-ghi", 0},
+		{"simple:10", "simple", 10},
+		{"no-colon", "no-colon", 0},
+	}
+	for _, tt := range tests {
+		sid, idx := parseTurnID(tt.turnID)
+		if sid != tt.sessionID {
+			t.Errorf("parseTurnID(%q) sessionID: got %q, want %q", tt.turnID, sid, tt.sessionID)
+		}
+		if idx != tt.index {
+			t.Errorf("parseTurnID(%q) index: got %d, want %d", tt.turnID, idx, tt.index)
+		}
+	}
+}
+
 func TestInvocationAndDesireIndependence(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

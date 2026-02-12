@@ -45,6 +45,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/invocations", s.handleRecordInvocation)
 	s.mux.HandleFunc("GET /api/v1/invocations", s.handleListInvocations)
 	s.mux.HandleFunc("GET /api/v1/invocations/stats", s.handleInvocationStats)
+	s.mux.HandleFunc("GET /api/v1/turns", s.handleGetTurns)
+	s.mux.HandleFunc("GET /api/v1/turns/stats", s.handleGetTurnStats)
 	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 }
 
@@ -300,6 +302,48 @@ func (s *Server) handleInvocationStats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "getting invocation stats: %v", err)
 		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleGetTurns(w http.ResponseWriter, r *http.Request) {
+	opts, err := parseTurnOpts(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	turns, err := s.store.GetTurns(r.Context(), opts)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "getting turns: %v", err)
+		return
+	}
+	if turns == nil {
+		turns = []store.TurnRow{}
+	}
+	writeJSON(w, http.StatusOK, turns)
+}
+
+func (s *Server) handleGetTurnStats(w http.ResponseWriter, r *http.Request) {
+	threshold, err := parseInt(r, "threshold")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if threshold <= 0 {
+		threshold = 5
+	}
+	since, err := parseSince(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	stats, err := s.store.GetPathTurnStats(r.Context(), threshold, since)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "getting turn stats: %v", err)
+		return
+	}
+	if stats == nil {
+		stats = []store.ToolTurnStats{}
 	}
 	writeJSON(w, http.StatusOK, stats)
 }

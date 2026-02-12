@@ -51,6 +51,12 @@ type Store interface {
 	// InvocationStats returns summary statistics about stored invocations.
 	InvocationStats(ctx context.Context) (InvocationStatsResult, error)
 
+	// GetTurns returns turns matching the filter options, with their tool sequences.
+	GetTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, error)
+
+	// GetPathTurnStats returns per-tool turn statistics for the paths --turns view.
+	GetPathTurnStats(ctx context.Context, threshold int, since time.Time) ([]ToolTurnStats, error)
+
 	// Close releases any resources held by the store.
 	Close() error
 }
@@ -122,6 +128,31 @@ type InvocationOpts struct {
 	ToolName   string    // Filter by tool name.
 	ErrorsOnly bool      // Only return invocations with errors.
 	Limit      int       // Maximum results; 0 means no limit.
+}
+
+// TurnRow represents one turn with its tool sequence.
+type TurnRow struct {
+	TurnID    string    `json:"turn_id"`
+	SessionID string    `json:"session_id"`
+	TurnIndex int       `json:"turn_index"`
+	Length    int        `json:"length"`
+	Tools     []string  `json:"tools"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// TurnOpts controls filtering for GetTurns.
+type TurnOpts struct {
+	MinLength int       // Only turns with at least this many tool calls.
+	Since     time.Time // Only turns after this time.
+	SessionID string    // Filter by session ID.
+	Limit     int       // Maximum results; 0 means no limit.
+}
+
+// ToolTurnStats holds per-tool turn statistics for paths --turns.
+type ToolTurnStats struct {
+	ToolName    string  `json:"tool_name"`
+	AvgTurnLen  float64 `json:"avg_turn_len"`
+	LongTurnPct float64 `json:"long_turn_pct"`
 }
 
 // InvocationStatsResult holds summary statistics about stored invocations.

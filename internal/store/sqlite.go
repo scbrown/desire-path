@@ -808,6 +808,133 @@ func (s *SQLiteStore) InvocationStats(ctx context.Context) (InvocationStatsResul
 	return st, nil
 }
 
+// GetTurns returns turns matching the filter options, with their tool sequences.
+func (s *SQLiteStore) GetTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, error) {
+	// Build filter for qualifying turns.
+	where := "WHERE turn_id != ''"
+	var args []any
+
+	if opts.MinLength > 0 {
+		where += " AND turn_length >= ?"
+		args = append(args, opts.MinLength)
+	}
+	if !opts.Since.IsZero() {
+		where += " AND timestamp >= ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	if opts.SessionID != "" {
+		where += " AND turn_id LIKE ?"
+		args = append(args, opts.SessionID+":%")
+	}
+
+	// Get qualifying turn_ids with their earliest timestamp for ordering.
+	subquery := fmt.Sprintf(
+		"SELECT turn_id, MIN(timestamp) as min_ts FROM invocations %s GROUP BY turn_id ORDER BY min_ts DESC",
+		where,
+	)
+	if opts.Limit > 0 {
+		subquery += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+
+	// Get all invocations for qualifying turns, ordered for sequence reconstruction.
+	query := fmt.Sprintf(
+		`SELECT i.turn_id, i.tool_name, i.turn_sequence, i.turn_length, i.timestamp
+		 FROM invocations i
+		 INNER JOIN (%s) t ON i.turn_id = t.turn_id
+		 ORDER BY t.min_ts DESC, i.turn_sequence`,
+		subquery,
+	)
+
+	rows, err := s.db.QueryContext(ctx, query, append(args, args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("get turns: %w", err)
+	}
+	defer rows.Close()
+
+	// Group rows by turn_id.
+	turnMap := make(map[string]*TurnRow)
+	var turnOrder []string
+	for rows.Next() {
+		var turnID, toolName, ts string
+		var seq, length int
+		if err := rows.Scan(&turnID, &toolName, &seq, &length, &ts); err != nil {
+			return nil, fmt.Errorf("scan turn row: %w", err)
+		}
+		tr, ok := turnMap[turnID]
+		if !ok {
+			t, _ := time.Parse(time.RFC3339Nano, ts)
+			sessionID, turnIndex := parseTurnID(turnID)
+			tr = &TurnRow{
+				TurnID:    turnID,
+				SessionID: sessionID,
+				TurnIndex: turnIndex,
+				Length:    length,
+				Timestamp: t,
+			}
+			turnMap[turnID] = tr
+			turnOrder = append(turnOrder, turnID)
+		}
+		tr.Tools = append(tr.Tools, toolName)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	result := make([]TurnRow, 0, len(turnOrder))
+	for _, id := range turnOrder {
+		result = append(result, *turnMap[id])
+	}
+	return result, nil
+}
+
+// GetPathTurnStats returns per-tool turn statistics for the paths --turns view.
+func (s *SQLiteStore) GetPathTurnStats(ctx context.Context, threshold int, since time.Time) ([]ToolTurnStats, error) {
+	where := "WHERE turn_id != '' AND turn_length > 0"
+	var args []any
+	if !since.IsZero() {
+		where += " AND timestamp >= ?"
+		args = append(args, since.UTC().Format(time.RFC3339Nano))
+	}
+	// threshold arg used twice: once for AVG, once for CASE
+	args = append(args, threshold)
+
+	query := fmt.Sprintf(`SELECT
+		tool_name,
+		AVG(turn_length) as avg_turn_len,
+		SUM(CASE WHEN turn_length > ? THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as long_turn_pct
+	FROM invocations
+	%s
+	GROUP BY tool_name`, where)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get path turn stats: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []ToolTurnStats
+	for rows.Next() {
+		var ts ToolTurnStats
+		if err := rows.Scan(&ts.ToolName, &ts.AvgTurnLen, &ts.LongTurnPct); err != nil {
+			return nil, fmt.Errorf("scan turn stats: %w", err)
+		}
+		stats = append(stats, ts)
+	}
+	return stats, rows.Err()
+}
+
+// parseTurnID splits a turn_id of format "session_id:turn_index" into its parts.
+func parseTurnID(turnID string) (sessionID string, turnIndex int) {
+	for i := len(turnID) - 1; i >= 0; i-- {
+		if turnID[i] == ':' {
+			sessionID = turnID[:i]
+			fmt.Sscanf(turnID[i+1:], "%d", &turnIndex)
+			return
+		}
+	}
+	return turnID, 0
+}
+
 // Close releases the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
