@@ -851,6 +851,9 @@ func (s *SQLiteStore) ListTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, 
 			return nil, fmt.Errorf("scan turn: %w", err)
 		}
 		tr.SessionID = sessionID.String
+		if opts.Pattern != "" && fuzzToolSequence(tr.Tools) != opts.Pattern {
+			continue
+		}
 		turns = append(turns, tr)
 	}
 	return turns, rows.Err()

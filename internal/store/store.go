@@ -151,6 +151,7 @@ type TurnOpts struct {
 	MinLength int       // Minimum turn length (tool call count).
 	Since     time.Time // Only turns after this time.
 	SessionID string    // Filter by session ID.
+	Pattern   string    // Filter by abstract pattern (e.g. "Grep → Read{2+} → Edit").
 	Limit     int       // Maximum results; 0 means no limit.
 }
 

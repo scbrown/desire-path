@@ -18,6 +18,7 @@ var (
 	turnsSince     string
 	turnsSession   string
 	turnsPatterns  bool
+	turnsPattern   string
 )
 
 var turnsCmd = &cobra.Command{
@@ -32,6 +33,7 @@ Use --patterns to see clustered abstract patterns instead.`,
 	Example: `  dp turns
   dp turns --min-length 3
   dp turns --patterns
+  dp turns --pattern "Grep → Read{2+} → Edit"
   dp turns --since 2026-02-01T00:00:00Z
   dp turns --session abc123
   dp turns --json`,
@@ -55,6 +57,7 @@ Use --patterns to see clustered abstract patterns instead.`,
 		opts := store.TurnOpts{
 			MinLength: minLen,
 			SessionID: turnsSession,
+			Pattern:   turnsPattern,
 		}
 		if turnsSince != "" {
 			t, err := time.Parse(time.RFC3339, turnsSince)
@@ -76,6 +79,7 @@ func init() {
 	turnsCmd.Flags().StringVar(&turnsSince, "since", "", "only include turns after this time (RFC3339)")
 	turnsCmd.Flags().StringVar(&turnsSession, "session", "", "filter by session ID")
 	turnsCmd.Flags().BoolVar(&turnsPatterns, "patterns", false, "show clustered abstract patterns instead of individual turns")
+	turnsCmd.Flags().StringVar(&turnsPattern, "pattern", "", "drill down to turns matching this abstract pattern")
 	rootCmd.AddCommand(turnsCmd)
 }
 

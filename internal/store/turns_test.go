@@ -307,6 +307,38 @@ func TestListTurnsWithLimit(t *testing.T) {
 	}
 }
 
+func TestListTurnsPatternDrillDown(t *testing.T) {
+	s := newTestStore(t)
+	seedTurnData(t, s)
+	ctx := context.Background()
+
+	// seedTurnData creates:
+	//   sess-001:0 — Grep → Read → Read         → fuzzed: "Grep → Read{2+}"
+	//   sess-001:1 — Grep → Read → Read → Read → Edit → Read → fuzzed: "Grep → Read{3+} → Edit → Read"
+	//   sess-002:0 — Glob → Read → Read → Grep → Read → Read → Edit → fuzzed: "Glob → Read{2+} → Grep → Read{2+} → Edit"
+
+	// Drill down to pattern that matches sess-001:0 only.
+	turns, err := s.ListTurns(ctx, TurnOpts{Pattern: "Grep → Read{2+}"})
+	if err != nil {
+		t.Fatalf("ListTurns with pattern: %v", err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("expected 1 turn matching 'Grep → Read{2+}', got %d", len(turns))
+	}
+	if turns[0].TurnID != "sess-001:0" {
+		t.Errorf("expected turn sess-001:0, got %s", turns[0].TurnID)
+	}
+
+	// Pattern with no matches returns empty.
+	turns, err = s.ListTurns(ctx, TurnOpts{Pattern: "Bash → Bash"})
+	if err != nil {
+		t.Fatalf("ListTurns no-match pattern: %v", err)
+	}
+	if len(turns) != 0 {
+		t.Errorf("expected 0 turns for non-matching pattern, got %d", len(turns))
+	}
+}
+
 func TestTurnPatternStatsMinLength(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

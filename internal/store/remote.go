@@ -311,6 +311,9 @@ func (r *RemoteStore) ListTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, 
 	if opts.SessionID != "" {
 		q.Set("session", opts.SessionID)
 	}
+	if opts.Pattern != "" {
+		q.Set("pattern", opts.Pattern)
+	}
 	if opts.Limit > 0 {
 		q.Set("limit", strconv.Itoa(opts.Limit))
 	}

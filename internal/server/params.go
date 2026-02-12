@@ -122,6 +122,7 @@ func parseTurnOpts(r *http.Request) (store.TurnOpts, error) {
 		MinLength: minLength,
 		Since:     since,
 		SessionID: r.URL.Query().Get("session"),
+		Pattern:   r.URL.Query().Get("pattern"),
 		Limit:     limit,
 	}, nil
 }
