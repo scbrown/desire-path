@@ -269,6 +269,12 @@ func formatRuleDescription(r model.Alias) string {
 		desc = fmt.Sprintf("`%s` → `%s`", r.From, r.To)
 	case "regex":
 		desc = fmt.Sprintf("Pattern `%s` → `%s`", r.From, r.To)
+	case "recipe":
+		if r.Message != "" {
+			desc = fmt.Sprintf("Do NOT use `%s`. %s", r.From, r.Message)
+		} else {
+			desc = fmt.Sprintf("Do NOT use `%s` — it does not exist and will be rewritten automatically.", r.From)
+		}
 	default:
 		desc = fmt.Sprintf("`%s` → `%s`", r.From, r.To)
 	}

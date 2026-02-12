@@ -396,6 +396,91 @@ func TestPaveAgentsMDMixed(t *testing.T) {
 	}
 }
 
+func TestPaveAgentsMDRecipe(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tool-name alias (should still appear in output).
+	if err := s.SetAlias(context.Background(), model.Alias{From: "read_file", To: "Read"}); err != nil {
+		t.Fatal(err)
+	}
+	// Recipe with custom message.
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt await-signal", To: "while true; do\n  status=$(gt mol status 2>&1)\n  echo \"$status\"\n  if echo \"$status\" | grep -q \"signaled\"; then break; fi\n  sleep 5\ndone",
+		Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+		Message: "Poll gt mol status in a loop",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Recipe without message (should use default).
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt convoy wait", To: "while true; do\n  gt convoy status\n  sleep 10\ndone",
+		Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+	jsonOutput = false
+	paveHook = false
+	paveAgentsMD = true
+	paveAppend = ""
+	defer func() { paveAgentsMD = false }()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	rootCmd.SetArgs([]string{"pave", "--db", db, "--agents-md"})
+	if err := rootCmd.Execute(); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("execute: %v", err)
+	}
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// Tool name section should still be present.
+	if !strings.Contains(output, "# Tool Name Corrections") {
+		t.Errorf("expected tool name header, got: %s", output)
+	}
+	if !strings.Contains(output, "Do NOT call `read_file`. Use `Read` instead.") {
+		t.Errorf("expected read_file rule, got: %s", output)
+	}
+
+	// Command corrections section should contain recipe rules.
+	if !strings.Contains(output, "# Command Corrections") {
+		t.Errorf("expected command corrections header, got: %s", output)
+	}
+
+	// Recipe with message: should use the message, not a script preview.
+	if !strings.Contains(output, "Do NOT use `gt await-signal`. Poll gt mol status in a loop") {
+		t.Errorf("expected recipe rule with message, got: %s", output)
+	}
+
+	// Recipe without message: should use default text.
+	if !strings.Contains(output, "Do NOT use `gt convoy wait` — it does not exist and will be rewritten automatically.") {
+		t.Errorf("expected recipe rule with default text, got: %s", output)
+	}
+
+	// Script content should NOT appear in the output.
+	if strings.Contains(output, "while true") {
+		t.Errorf("script content should not appear in agents-md output, got: %s", output)
+	}
+	if strings.Contains(output, "sleep 5") {
+		t.Errorf("script content should not appear in agents-md output, got: %s", output)
+	}
+}
+
 func TestPaveNoFlags(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "test.db")
 	dbPath = db
