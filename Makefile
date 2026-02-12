@@ -1,7 +1,12 @@
 .PHONY: build test integration-test vet clean install docs docs-serve
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null)
+LDFLAGS  = -X github.com/scbrown/desire-path/internal/cli.Version=$(VERSION) \
+           -X github.com/scbrown/desire-path/internal/cli.Commit=$(COMMIT)
+
 build:
-	go build -o dp ./cmd/dp
+	go build -ldflags "$(LDFLAGS)" -o dp ./cmd/dp
 
 test:
 	go test ./...
@@ -16,7 +21,7 @@ clean:
 	rm -f dp
 
 install:
-	go install ./cmd/dp
+	go install -ldflags "$(LDFLAGS)" ./cmd/dp
 
 docs:
 	mdbook build docs/book
