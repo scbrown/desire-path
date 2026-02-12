@@ -181,6 +181,56 @@ func (e *dpEnv) fixture(toolName, sessionID, errMsg string) []byte {
 	return data
 }
 
+// kiroFixture returns a Kiro CLI postToolUse hook JSON payload.
+// If errMsg is non-empty, tool_response.success is set to false (triggering
+// error detection in the kiro plugin).
+func (e *dpEnv) kiroFixture(toolName, errMsg string) []byte {
+	e.t.Helper()
+	resp := map[string]interface{}{
+		"success": errMsg == "",
+	}
+	if errMsg != "" {
+		resp["result"] = []string{errMsg}
+	} else {
+		resp["result"] = []string{"ok"}
+	}
+	m := map[string]interface{}{
+		"hook_event_name": "postToolUse",
+		"tool_name":       toolName,
+		"cwd":             e.home,
+		"tool_response":   resp,
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		e.t.Fatalf("marshal kiro fixture: %v", err)
+	}
+	return data
+}
+
+// codexFixture returns a Codex CLI item.completed JSON payload.
+// If errMsg is non-empty, item.status is set to "failed" (triggering error
+// detection in the codex plugin).
+func (e *dpEnv) codexFixture(itemType, errMsg string) []byte {
+	e.t.Helper()
+	status := "completed"
+	if errMsg != "" {
+		status = "failed"
+	}
+	m := map[string]interface{}{
+		"type": "item.completed",
+		"item": map[string]interface{}{
+			"id":     "item_test",
+			"type":   itemType,
+			"status": status,
+		},
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		e.t.Fatalf("marshal codex fixture: %v", err)
+	}
+	return data
+}
+
 // settingsPath returns the path to the Claude Code settings.json in this env.
 func (e *dpEnv) settingsPath() string {
 	return filepath.Join(e.home, ".claude", "settings.json")
