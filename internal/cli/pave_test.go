@@ -873,3 +873,233 @@ func TestPaveCheckLiteralReplace(t *testing.T) {
 		t.Errorf("expected user@old: to be replaced, got: %s", corrected)
 	}
 }
+
+// TestPaveCheckRecipeSimple verifies a simple recipe match replaces the segment.
+func TestPaveCheckRecipeSimple(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt await-signal", To: "gt mol status", Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"gt await-signal"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if corrected != "gt mol status" {
+		t.Errorf("expected 'gt mol status', got: %s", corrected)
+	}
+}
+
+// TestPaveCheckRecipePrefixTrailingArgs verifies trailing args are dropped.
+func TestPaveCheckRecipePrefixTrailingArgs(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt await-signal", To: "gt mol status", Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"gt await-signal --verbose"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if corrected != "gt mol status" {
+		t.Errorf("expected 'gt mol status' (trailing args dropped), got: %s", corrected)
+	}
+}
+
+// TestPaveCheckRecipeWordBoundary verifies --wispy does not match --wisp.
+func TestPaveCheckRecipeWordBoundary(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "bd list --wisp", To: "bd list | grep -i wisp", Tool: "Bash", Param: "command", Command: "bd", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	// "bd list --wispy" should NOT match the recipe for "bd list --wisp"
+	payload := `{"tool_name":"Bash","tool_input":{"command":"bd list --wispy"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if output != "" {
+		t.Errorf("expected no output (passthrough) for word boundary rejection, got: %s", output)
+	}
+}
+
+// TestPaveCheckRecipePipeScoping verifies only the matched segment is replaced.
+func TestPaveCheckRecipePipeScoping(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt await-signal", To: "gt mol status", Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	payload := `{"tool_name":"Bash","tool_input":{"command":"echo start && gt await-signal"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, buf.String())
+	}
+
+	corrected := result.HookSpecificOutput.UpdatedInput["command"].(string)
+	if !strings.Contains(corrected, "echo start") {
+		t.Errorf("expected 'echo start' preserved, got: %s", corrected)
+	}
+	if !strings.Contains(corrected, "gt mol status") {
+		t.Errorf("expected 'gt mol status' in corrected command, got: %s", corrected)
+	}
+}
+
+// TestPaveCheckRecipeNoMatch verifies no correction when command doesn't match recipe.
+func TestPaveCheckRecipeNoMatch(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := store.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAlias(context.Background(), model.Alias{
+		From: "gt await-signal", To: "gt mol status", Tool: "Bash", Param: "command", Command: "gt", MatchKind: "recipe",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	dbPath = db
+
+	// "gt convoy wait" should not match the "gt await-signal" recipe
+	payload := `{"tool_name":"Bash","tool_input":{"command":"gt convoy wait"}}`
+	stdin := strings.NewReader(payload)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runPaveCheck(stdin)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runPaveCheck: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if output != "" {
+		t.Errorf("expected no output (passthrough) for non-matching command, got: %s", output)
+	}
+}

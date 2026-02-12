@@ -196,6 +196,8 @@ func applyRule(value string, rule model.Alias) (string, string, bool) {
 		return applyLiteralRule(value, rule)
 	case "regex":
 		return applyRegexRule(value, rule)
+	case "recipe":
+		return applyRecipeRule(value, rule)
 	default:
 		return "", "", false
 	}
@@ -271,4 +273,38 @@ func applyRegexRule(value string, rule model.Alias) (string, string, bool) {
 		desc = rule.Message
 	}
 	return corrected, desc, true
+}
+
+func applyRecipeRule(value string, rule model.Alias) (string, string, bool) {
+	segs := cmdparse.Parse(value)
+	for _, seg := range segs {
+		if seg.Command != rule.Command {
+			continue
+		}
+		if !matchRecipePrefix(seg.Raw, rule.From) {
+			continue
+		}
+
+		// Replace the entire segment with the recipe script.
+		full := cmdparse.ApplyToFull(value, seg, rule.To)
+		desc := fmt.Sprintf("%s → [recipe]", rule.From)
+		if rule.Message != "" {
+			desc = rule.Message
+		}
+		return full, desc, true
+	}
+	return "", "", false
+}
+
+// matchRecipePrefix returns true if s starts with prefix and the character
+// immediately after prefix is whitespace or s is exactly prefix.
+func matchRecipePrefix(s, prefix string) bool {
+	if !strings.HasPrefix(s, prefix) {
+		return false
+	}
+	if len(s) == len(prefix) {
+		return true // exact match
+	}
+	next := s[len(prefix)]
+	return next == ' ' || next == '\t'
 }
