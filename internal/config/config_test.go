@@ -150,14 +150,81 @@ func TestSetInvalidFormat(t *testing.T) {
 
 func TestValidKeys(t *testing.T) {
 	keys := ValidKeys()
-	if len(keys) != 7 {
-		t.Fatalf("expected 7 keys, got %d", len(keys))
+	if len(keys) != 8 {
+		t.Fatalf("expected 8 keys, got %d", len(keys))
 	}
 	// Verify sorted order.
 	for i := 1; i < len(keys); i++ {
 		if keys[i] < keys[i-1] {
 			t.Errorf("keys not sorted: %q before %q", keys[i-1], keys[i])
 		}
+	}
+}
+
+func TestTurnLengthThresholdGetSet(t *testing.T) {
+	cfg := &Config{}
+
+	// Default: returns empty (zero value).
+	got, err := cfg.Get("turn_length_threshold")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got != "" {
+		t.Errorf("default: got %q, want empty", got)
+	}
+
+	// Set to valid value.
+	if err := cfg.Set("turn_length_threshold", "10"); err != nil {
+		t.Fatalf("set 10: %v", err)
+	}
+	got, _ = cfg.Get("turn_length_threshold")
+	if got != "10" {
+		t.Errorf("after set 10: got %q, want %q", got, "10")
+	}
+
+	// Reset to empty.
+	if err := cfg.Set("turn_length_threshold", ""); err != nil {
+		t.Fatalf("set empty: %v", err)
+	}
+	if cfg.TurnLengthThreshold != 0 {
+		t.Errorf("after reset: got %d, want 0", cfg.TurnLengthThreshold)
+	}
+
+	// Invalid value.
+	if err := cfg.Set("turn_length_threshold", "abc"); err == nil {
+		t.Fatal("expected error for non-integer value")
+	}
+
+	// Negative value.
+	if err := cfg.Set("turn_length_threshold", "-1"); err == nil {
+		t.Fatal("expected error for negative value")
+	}
+}
+
+func TestEffectiveTurnLengthThreshold(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.EffectiveTurnLengthThreshold(); got != DefaultTurnLengthThreshold {
+		t.Errorf("default: got %d, want %d", got, DefaultTurnLengthThreshold)
+	}
+
+	cfg.TurnLengthThreshold = 10
+	if got := cfg.EffectiveTurnLengthThreshold(); got != 10 {
+		t.Errorf("custom: got %d, want 10", got)
+	}
+}
+
+func TestSaveAndLoadTurnLengthThreshold(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	cfg := &Config{TurnLengthThreshold: 8}
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.TurnLengthThreshold != 8 {
+		t.Errorf("turn_length_threshold: got %d, want 8", loaded.TurnLengthThreshold)
 	}
 }
 

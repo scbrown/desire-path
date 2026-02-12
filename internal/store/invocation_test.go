@@ -751,6 +751,185 @@ func TestMetadataLargePayload(t *testing.T) {
 	}
 }
 
+func TestRecordInvocationTurnFieldsRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ts := time.Date(2026, 2, 11, 12, 0, 0, 0, time.UTC)
+
+	inv := model.Invocation{
+		ID:           "inv-turn-1",
+		Source:       "claude-code",
+		InstanceID:   "sess-xyz",
+		ToolName:     "Read",
+		Timestamp:    ts,
+		TurnID:       "sess-xyz:3",
+		TurnSequence: 2,
+		TurnLength:   5,
+	}
+
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	got, err := s.ListInvocations(ctx, InvocationOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(got))
+	}
+
+	g := got[0]
+	if g.TurnID != "sess-xyz:3" {
+		t.Errorf("TurnID: got %q, want %q", g.TurnID, "sess-xyz:3")
+	}
+	if g.TurnSequence != 2 {
+		t.Errorf("TurnSequence: got %d, want 2", g.TurnSequence)
+	}
+	if g.TurnLength != 5 {
+		t.Errorf("TurnLength: got %d, want 5", g.TurnLength)
+	}
+}
+
+func TestRecordInvocationTurnFieldsDefaults(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	inv := model.Invocation{
+		ID:        "inv-noturn",
+		Source:    "gemini-cli",
+		ToolName:  "search",
+		Timestamp: time.Now().UTC(),
+	}
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	got, err := s.ListInvocations(ctx, InvocationOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+
+	g := got[0]
+	if g.TurnID != "" {
+		t.Errorf("TurnID: got %q, want empty", g.TurnID)
+	}
+	if g.TurnSequence != 0 {
+		t.Errorf("TurnSequence: got %d, want 0", g.TurnSequence)
+	}
+	if g.TurnLength != 0 {
+		t.Errorf("TurnLength: got %d, want 0", g.TurnLength)
+	}
+}
+
+func TestMigrateV5TurnColumns(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "v5-test.db")
+
+	// Create a v4 database manually.
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+
+	v4Stmts := []string{
+		`CREATE TABLE schema_version (version INTEGER NOT NULL)`,
+		`INSERT INTO schema_version (version) VALUES (4)`,
+		`CREATE TABLE desires (
+			id TEXT PRIMARY KEY, tool_name TEXT NOT NULL, tool_input TEXT,
+			error TEXT NOT NULL, category TEXT, source TEXT, session_id TEXT,
+			cwd TEXT, timestamp TEXT NOT NULL, metadata TEXT
+		)`,
+		`CREATE TABLE invocations (
+			id TEXT PRIMARY KEY, source TEXT NOT NULL, instance_id TEXT,
+			host_id TEXT, tool_name TEXT NOT NULL, is_error INTEGER NOT NULL DEFAULT 0,
+			error TEXT, cwd TEXT, timestamp TEXT NOT NULL, metadata TEXT
+		)`,
+		`CREATE TABLE aliases (
+			from_name TEXT NOT NULL, to_name TEXT NOT NULL, tool TEXT NOT NULL DEFAULT '',
+			param TEXT NOT NULL DEFAULT '', command TEXT NOT NULL DEFAULT '',
+			match_kind TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (from_name, tool, param, command, match_kind)
+		)`,
+		// Insert a pre-existing invocation to verify it survives migration.
+		fmt.Sprintf(`INSERT INTO invocations (id, source, tool_name, timestamp) VALUES ('pre-v5', 'cc', 'Read', '%s')`,
+			time.Now().UTC().Format(time.RFC3339Nano)),
+	}
+	for _, stmt := range v4Stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("v4 setup: %v", err)
+		}
+	}
+	db.Close()
+
+	// Open with New() - should run v5 migration.
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New on v4 DB: %v", err)
+	}
+	defer s.Close()
+
+	// Verify version.
+	var ver int
+	if err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&ver); err != nil {
+		t.Fatalf("read version: %v", err)
+	}
+	if ver != 5 {
+		t.Errorf("schema version: got %d, want 5", ver)
+	}
+
+	ctx := context.Background()
+
+	// Pre-existing invocation should have default turn values.
+	got, err := s.ListInvocations(ctx, InvocationOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	if got[0].TurnID != "" {
+		t.Errorf("pre-v5 TurnID: got %q, want empty", got[0].TurnID)
+	}
+	if got[0].TurnSequence != 0 {
+		t.Errorf("pre-v5 TurnSequence: got %d, want 0", got[0].TurnSequence)
+	}
+	if got[0].TurnLength != 0 {
+		t.Errorf("pre-v5 TurnLength: got %d, want 0", got[0].TurnLength)
+	}
+
+	// New invocation with turn fields should work.
+	inv := model.Invocation{
+		ID:           "post-v5",
+		Source:       "cc",
+		ToolName:     "Bash",
+		Timestamp:    time.Now().UTC(),
+		TurnID:       "abc:2",
+		TurnSequence: 1,
+		TurnLength:   4,
+	}
+	if err := s.RecordInvocation(ctx, inv); err != nil {
+		t.Fatalf("RecordInvocation: %v", err)
+	}
+
+	all, err := s.ListInvocations(ctx, InvocationOpts{})
+	if err != nil {
+		t.Fatalf("ListInvocations: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2, got %d", len(all))
+	}
+	// Newest first.
+	if all[0].TurnID != "abc:2" {
+		t.Errorf("post-v5 TurnID: got %q, want %q", all[0].TurnID, "abc:2")
+	}
+}
+
 func TestMigrateV2FreshDB(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "fresh.db")

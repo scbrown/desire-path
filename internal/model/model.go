@@ -63,14 +63,17 @@ func (a Alias) IsToolNameAlias() bool {
 
 // Invocation represents a single tool invocation from any source plugin.
 type Invocation struct {
-	ID         string          `json:"id"`
-	Source     string          `json:"source"`
-	InstanceID string          `json:"instance_id,omitempty"`
-	HostID     string          `json:"host_id,omitempty"`
-	ToolName   string          `json:"tool_name"`
-	IsError    bool            `json:"is_error"`
-	Error      string          `json:"error,omitempty"`
-	CWD        string          `json:"cwd,omitempty"`
-	Timestamp  time.Time       `json:"timestamp"`
-	Metadata   json.RawMessage `json:"metadata,omitempty"`
+	ID           string          `json:"id"`
+	Source       string          `json:"source"`
+	InstanceID   string          `json:"instance_id,omitempty"`
+	HostID       string          `json:"host_id,omitempty"`
+	ToolName     string          `json:"tool_name"`
+	IsError      bool            `json:"is_error"`
+	Error        string          `json:"error,omitempty"`
+	CWD          string          `json:"cwd,omitempty"`
+	Timestamp    time.Time       `json:"timestamp"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	TurnID       string          `json:"turn_id,omitempty"`
+	TurnSequence int             `json:"turn_sequence"`
+	TurnLength   int             `json:"turn_length"`
 }

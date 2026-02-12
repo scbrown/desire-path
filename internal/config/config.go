@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -14,29 +15,42 @@ import (
 
 // Config holds dp configuration settings.
 type Config struct {
-	DBPath        string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
-	DefaultSource string   `toml:"default_source,omitempty" json:"default_source,omitempty"`
-	KnownTools    []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
-	TrackTools    []string `toml:"track_tools,omitempty" json:"track_tools,omitempty"`
-	DefaultFormat string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
-	StoreMode     string   `toml:"store_mode,omitempty" json:"store_mode,omitempty"`
-	RemoteURL     string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
+	DBPath               string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
+	DefaultSource        string   `toml:"default_source,omitempty" json:"default_source,omitempty"`
+	KnownTools           []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
+	TrackTools           []string `toml:"track_tools,omitempty" json:"track_tools,omitempty"`
+	DefaultFormat        string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
+	StoreMode            string   `toml:"store_mode,omitempty" json:"store_mode,omitempty"`
+	RemoteURL            string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
+	TurnLengthThreshold  int      `toml:"turn_length_threshold,omitempty" json:"turn_length_threshold,omitempty"`
+}
+
+// DefaultTurnLengthThreshold is the default threshold for "long" turns.
+const DefaultTurnLengthThreshold = 5
+
+// EffectiveTurnLengthThreshold returns the configured threshold, or the default.
+func (c *Config) EffectiveTurnLengthThreshold() int {
+	if c.TurnLengthThreshold > 0 {
+		return c.TurnLengthThreshold
+	}
+	return DefaultTurnLengthThreshold
 }
 
 // validKeys lists the allowed configuration keys.
 var validKeys = map[string]bool{
-	"db_path":        true,
-	"default_source": true,
-	"known_tools":    true,
-	"track_tools":    true,
-	"default_format": true,
-	"store_mode":     true,
-	"remote_url":     true,
+	"db_path":                true,
+	"default_source":         true,
+	"known_tools":            true,
+	"track_tools":            true,
+	"default_format":         true,
+	"store_mode":             true,
+	"remote_url":             true,
+	"turn_length_threshold":  true,
 }
 
 // ValidKeys returns the sorted list of valid configuration keys.
 func ValidKeys() []string {
-	return []string{"db_path", "default_format", "default_source", "known_tools", "remote_url", "store_mode", "track_tools"}
+	return []string{"db_path", "default_format", "default_source", "known_tools", "remote_url", "store_mode", "track_tools", "turn_length_threshold"}
 }
 
 // Path returns the default config file path (~/.dp/config.toml).
@@ -175,6 +189,11 @@ func (c *Config) Get(key string) (string, error) {
 		return c.StoreMode, nil
 	case "remote_url":
 		return c.RemoteURL, nil
+	case "turn_length_threshold":
+		if c.TurnLengthThreshold == 0 {
+			return "", nil
+		}
+		return fmt.Sprintf("%d", c.TurnLengthThreshold), nil
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
@@ -223,6 +242,16 @@ func (c *Config) Set(key, value string) error {
 		c.StoreMode = value
 	case "remote_url":
 		c.RemoteURL = value
+	case "turn_length_threshold":
+		if value == "" {
+			c.TurnLengthThreshold = 0
+		} else {
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 0 {
+				return fmt.Errorf("turn_length_threshold must be a non-negative integer, got %q", value)
+			}
+			c.TurnLengthThreshold = n
+		}
 	}
 	return nil
 }

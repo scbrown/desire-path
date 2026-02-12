@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
+	"github.com/scbrown/desire-path/internal/transcript"
 )
 
 // Ingest parses raw bytes using the named source plugin, converts the
@@ -41,11 +43,17 @@ func Ingest(ctx context.Context, s store.Store, raw []byte, sourceName string) (
 // it via the store. When the invocation is an error, a Desire is also written
 // so failures appear in both reporting views (dp list/paths/stats for desires,
 // dp export --type invocations for the full picture).
+//
+// When transcript_path and tool_use_id are available in Fields.Extra, the
+// transcript is parsed to enrich the invocation with turn context (turn_id,
+// turn_sequence, turn_length).
 func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sourceName string) (model.Invocation, error) {
 	inv, err := toInvocation(fields, sourceName)
 	if err != nil {
 		return model.Invocation{}, err
 	}
+
+	enrichTurnContext(&inv, fields)
 
 	if err := s.RecordInvocation(ctx, inv); err != nil {
 		return model.Invocation{}, fmt.Errorf("storing invocation: %w", err)
@@ -106,4 +114,54 @@ func toInvocation(f *source.Fields, sourceName string) (model.Invocation, error)
 	}
 
 	return inv, nil
+}
+
+// enrichTurnContext parses the transcript (if available) to populate turn
+// fields on the invocation. It matches the current tool_use_id within the
+// transcript to determine which turn this invocation belongs to.
+//
+// If transcript_path or tool_use_id are missing from Fields.Extra, or if
+// parsing fails, the invocation is left with zero-value turn fields (which
+// is fine — turn data is best-effort enrichment).
+func enrichTurnContext(inv *model.Invocation, fields *source.Fields) {
+	transcriptPath := extraString(fields.Extra, "transcript_path")
+	toolUseID := extraString(fields.Extra, "tool_use_id")
+	if transcriptPath == "" || toolUseID == "" {
+		return
+	}
+
+	f, err := os.Open(transcriptPath)
+	if err != nil {
+		return // transcript not accessible, skip enrichment
+	}
+	defer f.Close()
+
+	turns, err := transcript.Parse(f)
+	if err != nil {
+		return // parse error, skip enrichment
+	}
+
+	for _, turn := range turns {
+		for _, step := range turn.Steps {
+			if step.ToolUseID == toolUseID {
+				inv.TurnID = fmt.Sprintf("%s:%d", turn.SessionID, turn.Index)
+				inv.TurnSequence = step.Sequence
+				inv.TurnLength = len(turn.Steps)
+				return
+			}
+		}
+	}
+}
+
+// extraString extracts a string value from the Extra map, unquoting the JSON.
+func extraString(extra map[string]json.RawMessage, key string) string {
+	raw, ok := extra[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
 }
