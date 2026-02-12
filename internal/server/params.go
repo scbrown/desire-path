@@ -105,6 +105,27 @@ func parseInspectOpts(r *http.Request) (store.InspectOpts, error) {
 	}, nil
 }
 
+func parseTurnOpts(r *http.Request) (store.TurnOpts, error) {
+	since, err := parseSince(r)
+	if err != nil {
+		return store.TurnOpts{}, err
+	}
+	minLength, err := parseInt(r, "min_length")
+	if err != nil {
+		return store.TurnOpts{}, err
+	}
+	limit, err := parseInt(r, "limit")
+	if err != nil {
+		return store.TurnOpts{}, err
+	}
+	return store.TurnOpts{
+		MinLength: minLength,
+		Since:     since,
+		SessionID: r.URL.Query().Get("session"),
+		Limit:     limit,
+	}, nil
+}
+
 func parseInvocationOpts(r *http.Request) (store.InvocationOpts, error) {
 	since, err := parseSince(r)
 	if err != nil {

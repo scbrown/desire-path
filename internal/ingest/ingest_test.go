@@ -79,6 +79,15 @@ func (f *fakeStore) ListInvocations(context.Context, store.InvocationOpts) ([]mo
 func (f *fakeStore) InvocationStats(context.Context) (store.InvocationStatsResult, error) {
 	return store.InvocationStatsResult{}, nil
 }
+func (f *fakeStore) ListTurns(context.Context, store.TurnOpts) ([]store.TurnRow, error) {
+	return nil, nil
+}
+func (f *fakeStore) TurnPatternStats(context.Context, store.TurnOpts) ([]store.TurnPattern, error) {
+	return nil, nil
+}
+func (f *fakeStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.ToolTurnStat, error) {
+	return nil, nil
+}
 func (f *fakeStore) Close() error { return nil }
 
 // registerTestSource registers a fake source and returns a cleanup function
@@ -562,6 +571,120 @@ func TestIngestNoCategoryForGenericBashError(t *testing.T) {
 	}
 }
 
+func TestEnrichTurnContextFromTranscript(t *testing.T) {
+	// Create a minimal transcript file.
+	dir := t.TempDir()
+	transcriptPath := dir + "/session.jsonl"
+	transcript := `{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":"Fix the bug"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Grep","input":{"pattern":"bug"}}]}}
+{"type":"user","uuid":"r1","parentUuid":"a1","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:02Z","sourceToolAssistantUUID":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","content":"found"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"r1","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:03Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_002","name":"Read","input":{"file_path":"bug.go"}}]}}
+{"type":"user","uuid":"r2","parentUuid":"a2","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:04Z","sourceToolAssistantUUID":"a2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_002","content":"file content"}]}}
+{"type":"assistant","uuid":"a3","parentUuid":"r2","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_003","name":"Edit","input":{"old":"x","new":"y"}}]}}
+{"type":"system","uuid":"s1","parentUuid":"a3","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:06Z","subtype":"stop_hook_summary","hookCount":0,"hookErrors":[],"preventedContinuation":false}
+{"type":"system","uuid":"s2","parentUuid":"s1","sessionId":"sess-enrich","timestamp":"2026-01-15T10:00:06Z","subtype":"turn_duration","durationMs":6000}
+`
+	if err := os.WriteFile(transcriptPath, []byte(transcript), 0644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	// Test enrichment for the second tool call (toolu_002 = Read at sequence 1).
+	fields := &source.Fields{
+		ToolName:   "Read",
+		InstanceID: "sess-enrich",
+		Extra: map[string]json.RawMessage{
+			"transcript_path": json.RawMessage(fmt.Sprintf("%q", transcriptPath)),
+			"tool_use_id":     json.RawMessage(`"toolu_002"`),
+		},
+	}
+
+	inv := model.Invocation{
+		ID:         "enrich-1",
+		Source:     "claude-code",
+		InstanceID: "sess-enrich",
+		ToolName:   "Read",
+		Timestamp:  time.Now().UTC(),
+	}
+
+	enrichTurnContext(&inv, fields)
+
+	if inv.TurnID != "sess-enrich:0" {
+		t.Errorf("TurnID = %q, want %q", inv.TurnID, "sess-enrich:0")
+	}
+	if inv.TurnSequence != 1 {
+		t.Errorf("TurnSequence = %d, want 1", inv.TurnSequence)
+	}
+	if inv.TurnLength != 3 {
+		t.Errorf("TurnLength = %d, want 3", inv.TurnLength)
+	}
+}
+
+func TestEnrichTurnContextNoTranscript(t *testing.T) {
+	fields := &source.Fields{
+		ToolName: "Read",
+	}
+	inv := model.Invocation{
+		ID:       "no-transcript",
+		ToolName: "Read",
+	}
+
+	enrichTurnContext(&inv, fields)
+
+	if inv.TurnID != "" {
+		t.Errorf("TurnID should be empty without transcript, got %q", inv.TurnID)
+	}
+}
+
+func TestEnrichTurnContextMissingFile(t *testing.T) {
+	fields := &source.Fields{
+		ToolName: "Read",
+		Extra: map[string]json.RawMessage{
+			"transcript_path": json.RawMessage(`"/nonexistent/path.jsonl"`),
+			"tool_use_id":     json.RawMessage(`"toolu_999"`),
+		},
+	}
+	inv := model.Invocation{
+		ID:       "missing-file",
+		ToolName: "Read",
+	}
+
+	enrichTurnContext(&inv, fields)
+
+	// Should gracefully skip.
+	if inv.TurnID != "" {
+		t.Errorf("TurnID should be empty for missing file, got %q", inv.TurnID)
+	}
+}
+
+func TestEnrichTurnContextToolUseIDNotFound(t *testing.T) {
+	dir := t.TempDir()
+	transcriptPath := dir + "/session.jsonl"
+	transcript := `{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-nf","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":"Hi"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-nf","timestamp":"2026-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Read","input":{}}]}}
+`
+	if err := os.WriteFile(transcriptPath, []byte(transcript), 0644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	fields := &source.Fields{
+		ToolName: "Read",
+		Extra: map[string]json.RawMessage{
+			"transcript_path": json.RawMessage(fmt.Sprintf("%q", transcriptPath)),
+			"tool_use_id":     json.RawMessage(`"toolu_999"`), // doesn't exist
+		},
+	}
+	inv := model.Invocation{
+		ID:       "not-found",
+		ToolName: "Read",
+	}
+
+	enrichTurnContext(&inv, fields)
+
+	if inv.TurnID != "" {
+		t.Errorf("TurnID should be empty when tool_use_id not found, got %q", inv.TurnID)
+	}
+}
+
 func TestIngestDualWriteDesireStoreError(t *testing.T) {
 	srcName := "test-dualwrite-desire-err"
 	registerTestSource(t, srcName, &source.Fields{
@@ -587,48 +710,6 @@ func writeTranscript(t *testing.T, lines string) string {
 		t.Fatalf("writing transcript: %v", err)
 	}
 	return path
-}
-
-func TestEnrichTurnContextFromTranscript(t *testing.T) {
-	// Create a transcript with one turn containing 3 tool calls.
-	transcript := `{"type":"user","uuid":"u1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":"Do some work"}}
-{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Grep","input":{"pattern":"TODO"}}]}}
-{"type":"user","uuid":"u2","parentUuid":"a1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:02Z","sourceToolAssistantUUID":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","is_error":false,"content":"found 3 matches"}]}}
-{"type":"assistant","uuid":"a3","parentUuid":"u2","sessionId":"sess-001","timestamp":"2026-01-15T10:00:03Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_002","name":"Read","input":{"file_path":"/tmp/a.go"}}]}}
-{"type":"user","uuid":"u4","parentUuid":"a3","sessionId":"sess-001","timestamp":"2026-01-15T10:00:04Z","sourceToolAssistantUUID":"a3","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_002","is_error":false,"content":"package main"}]}}
-{"type":"assistant","uuid":"a5","parentUuid":"u4","sessionId":"sess-001","timestamp":"2026-01-15T10:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_003","name":"Edit","input":{"file_path":"/tmp/a.go"}}]}}
-{"type":"user","uuid":"u6","parentUuid":"a5","sessionId":"sess-001","timestamp":"2026-01-15T10:00:06Z","sourceToolAssistantUUID":"a5","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_003","is_error":false,"content":"ok"}]}}
-{"type":"system","uuid":"s1","parentUuid":"u6","sessionId":"sess-001","timestamp":"2026-01-15T10:00:07Z","subtype":"stop_hook_summary"}
-{"type":"system","uuid":"s2","parentUuid":"s1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:07Z","subtype":"turn_duration","durationMs":7000}
-`
-	transcriptPath := writeTranscript(t, transcript)
-
-	srcName := "test-enrich-turn"
-	registerTestSource(t, srcName, &source.Fields{
-		ToolName:   "Read",
-		InstanceID: "sess-001",
-		Extra: map[string]json.RawMessage{
-			"tool_use_id":     json.RawMessage(`"toolu_002"`),
-			"transcript_path": json.RawMessage(fmt.Sprintf(`%q`, transcriptPath)),
-		},
-	}, nil)
-
-	fs := &fakeStore{}
-	inv, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// toolu_002 is the 2nd tool call (sequence 1) in a turn with 3 steps.
-	if inv.TurnID != "sess-001:0" {
-		t.Errorf("TurnID: got %q, want %q", inv.TurnID, "sess-001:0")
-	}
-	if inv.TurnSequence != 1 {
-		t.Errorf("TurnSequence: got %d, want 1", inv.TurnSequence)
-	}
-	if inv.TurnLength != 3 {
-		t.Errorf("TurnLength: got %d, want 3", inv.TurnLength)
-	}
 }
 
 func TestEnrichTurnContextNoTranscriptPath(t *testing.T) {
@@ -699,34 +780,6 @@ func TestEnrichTurnContextMissingTranscriptFile(t *testing.T) {
 	// Gracefully falls back to zero values.
 	if inv.TurnID != "" {
 		t.Errorf("TurnID should be empty for missing file, got %q", inv.TurnID)
-	}
-}
-
-func TestEnrichTurnContextToolUseIDNotFound(t *testing.T) {
-	transcript := `{"type":"user","uuid":"u1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":"hello"}}
-{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_999","name":"Read","input":{}}]}}
-{"type":"system","uuid":"s1","parentUuid":"a1","sessionId":"sess-001","timestamp":"2026-01-15T10:00:02Z","subtype":"turn_duration","durationMs":2000}
-`
-	transcriptPath := writeTranscript(t, transcript)
-
-	srcName := "test-enrich-notfound"
-	registerTestSource(t, srcName, &source.Fields{
-		ToolName: "Read",
-		Extra: map[string]json.RawMessage{
-			"tool_use_id":     json.RawMessage(`"toolu_NONEXISTENT"`),
-			"transcript_path": json.RawMessage(fmt.Sprintf(`%q`, transcriptPath)),
-		},
-	}, nil)
-
-	fs := &fakeStore{}
-	inv, err := Ingest(context.Background(), fs, []byte(`{}`), srcName)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// tool_use_id not in transcript: zero values.
-	if inv.TurnID != "" {
-		t.Errorf("TurnID should be empty for unmatched tool_use_id, got %q", inv.TurnID)
 	}
 }
 

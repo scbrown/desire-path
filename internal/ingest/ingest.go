@@ -153,6 +153,7 @@ func enrichTurnContext(inv *model.Invocation, fields *source.Fields) {
 	}
 }
 
+
 // extraString extracts a string value from the Extra map, unquoting the JSON.
 func extraString(extra map[string]json.RawMessage, key string) string {
 	raw, ok := extra[key]

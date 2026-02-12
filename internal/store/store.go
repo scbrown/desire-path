@@ -51,6 +51,15 @@ type Store interface {
 	// InvocationStats returns summary statistics about stored invocations.
 	InvocationStats(ctx context.Context) (InvocationStatsResult, error)
 
+	// ListTurns returns turns (grouped invocations) matching the given options.
+	ListTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, error)
+
+	// TurnPatternStats returns aggregated turn patterns with their counts.
+	TurnPatternStats(ctx context.Context, opts TurnOpts) ([]TurnPattern, error)
+
+	// ToolTurnStats returns per-tool turn statistics for the paths --turns view.
+	ToolTurnStats(ctx context.Context, opts TurnOpts) ([]ToolTurnStat, error)
+
 	// Close releases any resources held by the store.
 	Close() error
 }
@@ -135,4 +144,39 @@ type InvocationStatsResult struct {
 	Last30d     int            `json:"last_30d"`
 	Earliest    time.Time      `json:"earliest"`
 	Latest      time.Time      `json:"latest"`
+}
+
+// TurnOpts controls filtering for turn-related queries.
+type TurnOpts struct {
+	MinLength int       // Minimum turn length (tool call count).
+	Since     time.Time // Only turns after this time.
+	SessionID string    // Filter by session ID.
+	Limit     int       // Maximum results; 0 means no limit.
+}
+
+// TurnRow represents a single turn with its tool sequence.
+type TurnRow struct {
+	TurnID    string `json:"turn_id"`
+	SessionID string `json:"session_id"`
+	Length    int    `json:"length"`
+	Tools     string `json:"tools"`
+}
+
+// TurnPattern represents an abstract tool sequence pattern with frequency.
+type TurnPattern struct {
+	Pattern     string  `json:"pattern"`
+	Count       int     `json:"count"`
+	AvgLength   float64 `json:"avg_length"`
+	TotalLength int     `json:"-"`
+	Sessions    int     `json:"sessions"`
+	sessions    map[string]bool
+}
+
+// ToolTurnStat holds per-tool turn statistics.
+type ToolTurnStat struct {
+	ToolName    string  `json:"tool_name"`
+	Count       int     `json:"count"`
+	AvgTurnLen  float64 `json:"avg_turn_len"`
+	LongCount   int     `json:"long_count"`
+	LongTurnPct float64 `json:"long_turn_pct"`
 }

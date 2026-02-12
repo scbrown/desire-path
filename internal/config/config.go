@@ -13,6 +13,10 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+// DefaultTurnLengthThreshold is the default minimum tool call count for a turn
+// to be considered "long". Used by dp turns and turn-pattern analysis.
+const DefaultTurnLengthThreshold = 5
+
 // Config holds dp configuration settings.
 type Config struct {
 	DBPath               string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
@@ -24,9 +28,6 @@ type Config struct {
 	RemoteURL            string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
 	TurnLengthThreshold  int      `toml:"turn_length_threshold,omitempty" json:"turn_length_threshold,omitempty"`
 }
-
-// DefaultTurnLengthThreshold is the default threshold for "long" turns.
-const DefaultTurnLengthThreshold = 5
 
 // EffectiveTurnLengthThreshold returns the configured threshold, or the default.
 func (c *Config) EffectiveTurnLengthThreshold() int {
