@@ -86,17 +86,18 @@ func TestPaveCheckEmptyStdin(t *testing.T) {
 	}
 }
 
-// TestPaveCheckChainedAlias verifies that when multiple aliases exist,
-// only a matching tool_name triggers the block (exit 2), while non-matching
-// tool names pass through (exit 0).
+// TestPaveCheckChainedAlias verifies single-hop alias lookup when an
+// alias-of-an-alias chain exists: read_file→Read→SuperRead.
+// pave-check read_file should exit 2 mentioning "Read" (not "SuperRead"),
+// and pave-check Read should exit 2 mentioning "SuperRead".
 func TestPaveCheckChainedAlias(t *testing.T) {
 	e := newEnv(t)
 
-	// Set up two distinct aliases.
+	// Build alias chain: read_file → Read → SuperRead.
 	e.mustRun(nil, "alias", "read_file", "Read")
-	e.mustRun(nil, "alias", "run_tests", "Bash")
+	e.mustRun(nil, "alias", "Read", "SuperRead")
 
-	// First alias should block.
+	// read_file should resolve one hop to Read, not follow chain to SuperRead.
 	payload1, _ := json.Marshal(map[string]string{"tool_name": "read_file"})
 	_, stderr, err := e.run(payload1, "pave-check")
 	code := exitCode(err)
@@ -106,23 +107,18 @@ func TestPaveCheckChainedAlias(t *testing.T) {
 	if !strings.Contains(stderr, "Read") {
 		t.Errorf("read_file: expected stderr to mention 'Read', got: %q", stderr)
 	}
+	if strings.Contains(stderr, "SuperRead") {
+		t.Errorf("read_file: should NOT mention 'SuperRead' (single-hop), got: %q", stderr)
+	}
 
-	// Second alias should also block.
-	payload2, _ := json.Marshal(map[string]string{"tool_name": "run_tests"})
+	// Read should resolve one hop to SuperRead.
+	payload2, _ := json.Marshal(map[string]string{"tool_name": "Read"})
 	_, stderr, err = e.run(payload2, "pave-check")
 	code = exitCode(err)
 	if code != 2 {
-		t.Fatalf("run_tests: expected exit code 2, got %d (stderr: %q)", code, stderr)
+		t.Fatalf("Read: expected exit code 2, got %d (stderr: %q)", code, stderr)
 	}
-	if !strings.Contains(stderr, "Bash") {
-		t.Errorf("run_tests: expected stderr to mention 'Bash', got: %q", stderr)
-	}
-
-	// An unaliased tool should pass through.
-	payload3, _ := json.Marshal(map[string]string{"tool_name": "Write"})
-	_, stderr, err = e.run(payload3, "pave-check")
-	code = exitCode(err)
-	if code != 0 {
-		t.Fatalf("Write: expected exit code 0, got %d (stderr: %q)", code, stderr)
+	if !strings.Contains(stderr, "SuperRead") {
+		t.Errorf("Read: expected stderr to mention 'SuperRead', got: %q", stderr)
 	}
 }
