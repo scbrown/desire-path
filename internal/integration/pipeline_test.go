@@ -242,27 +242,34 @@ func TestBothFlags(t *testing.T) {
 }
 
 // TestMultiSourceIngest verifies ingesting from multiple sources and
-// filtering by source in list output.
+// filtering by source in list output. It is table-driven across
+// [claude-code, kiro, codex] per Plan 005 Tier 3.
 func TestMultiSourceIngest(t *testing.T) {
+	e := newEnv(t)
+
 	type ingestCase struct {
 		source  string
-		tool    string
-		session string
-		errMsg  string
+		tool    string // expected tool_name in list output
+		payload []byte
 	}
 	cases := []ingestCase{
-		{"claude-code", "read_file", "cc-s1", "unknown tool"},
-		{"claude-code", "run_tests", "cc-s1", "tool not available"},
-		{"claude-code", "read_file", "cc-s2", "unknown tool"},
+		// Claude Code: uses tool_name, session_id, error fields.
+		{"claude-code", "read_file", e.fixture("read_file", "cc-s1", "unknown tool")},
+		{"claude-code", "run_tests", e.fixture("run_tests", "cc-s1", "tool not available")},
+		{"claude-code", "read_file", e.fixture("read_file", "cc-s2", "unknown tool")},
+		// Kiro: uses tool_name, cwd, tool_response.success=false for errors.
+		{"kiro", "write", e.kiroFixture("write", "command not found")},
+		{"kiro", "shell", e.kiroFixture("shell", "permission denied")},
+		// Codex: uses item.completed with item.status="failed" for errors.
+		{"codex", "command_execution", e.codexFixture("command_execution", "bad command")},
+		{"codex", "file_change", e.codexFixture("file_change", "write failed")},
 	}
 
-	e := newEnv(t)
 	for _, tc := range cases {
-		payload := e.fixture(tc.tool, tc.session, tc.errMsg)
-		e.mustRun(payload, "ingest", "--source", tc.source)
+		e.mustRun(tc.payload, "ingest", "--source", tc.source)
 	}
 
-	// List all — should see all 3.
+	// List all — should see all 7 desires (3 claude-code + 2 kiro + 2 codex).
 	stdout, _ := e.mustRun(nil, "list", "--json")
 	var allDesires []struct {
 		ToolName string `json:"tool_name"`
@@ -271,11 +278,23 @@ func TestMultiSourceIngest(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &allDesires); err != nil {
 		t.Fatalf("parse list JSON: %v", err)
 	}
-	if len(allDesires) != 3 {
-		t.Fatalf("expected 3 desires total, got %d", len(allDesires))
+	if len(allDesires) != 7 {
+		t.Fatalf("expected 7 desires total, got %d", len(allDesires))
 	}
 
-	// Paths should show 2 unique tools.
+	// Verify all three sources are represented.
+	sourceSet := make(map[string]bool)
+	for _, d := range allDesires {
+		sourceSet[d.Source] = true
+	}
+	for _, s := range []string{"claude-code", "kiro", "codex"} {
+		if !sourceSet[s] {
+			t.Errorf("source %q not found in desires", s)
+		}
+	}
+
+	// Paths should show 6 unique tools:
+	// read_file(3), run_tests(1), write(1), shell(1), command_execution(1), file_change(1).
 	stdout, _ = e.mustRun(nil, "paths", "--json")
 	var paths []struct {
 		Pattern string `json:"pattern"`
@@ -284,8 +303,15 @@ func TestMultiSourceIngest(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &paths); err != nil {
 		t.Fatalf("parse paths JSON: %v", err)
 	}
-	if len(paths) != 2 {
-		t.Fatalf("expected 2 paths, got %d", len(paths))
+	if len(paths) != 6 {
+		t.Fatalf("expected 6 paths, got %d", len(paths))
+	}
+	// read_file should be first (most frequent with count=2).
+	if paths[0].Pattern != "read_file" {
+		t.Errorf("top path = %q, want read_file", paths[0].Pattern)
+	}
+	if paths[0].Count != 2 {
+		t.Errorf("read_file count = %d, want 2", paths[0].Count)
 	}
 }
 
