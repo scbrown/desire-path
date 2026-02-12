@@ -1330,6 +1330,57 @@ func TestGetPathTurnStatsBasic(t *testing.T) {
 	}
 }
 
+func TestGetPathTurnStatsWithSince(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	old := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	recent := time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
+
+	// Old turn (should be excluded by since filter).
+	if err := s.RecordInvocation(ctx, model.Invocation{
+		ID: "old-0", Source: "cc", ToolName: "Grep", Timestamp: old,
+		TurnID: "s:0", TurnSequence: 0, TurnLength: 6,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Recent turn (should be included).
+	for i := 0; i < 3; i++ {
+		if err := s.RecordInvocation(ctx, model.Invocation{
+			ID: fmt.Sprintf("new-%d", i), Source: "cc", ToolName: "Read",
+			Timestamp: recent.Add(time.Duration(i) * time.Second),
+			TurnID: "s:1", TurnSequence: i, TurnLength: 3,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stats, err := s.GetPathTurnStats(ctx, 5, recent.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("GetPathTurnStats with since: %v", err)
+	}
+
+	// Should only include Read (from the recent turn), not Grep (from the old turn).
+	statsMap := make(map[string]ToolTurnStats)
+	for _, s := range stats {
+		statsMap[s.ToolName] = s
+	}
+	if _, ok := statsMap["Grep"]; ok {
+		t.Error("Grep should be excluded by since filter")
+	}
+	read, ok := statsMap["Read"]
+	if !ok {
+		t.Fatal("Read should be present")
+	}
+	if read.AvgTurnLen != 3.0 {
+		t.Errorf("Read AvgTurnLen: got %.1f, want 3.0", read.AvgTurnLen)
+	}
+	// turn_length=3 is NOT > 5, so LongTurnPct should be 0.
+	if read.LongTurnPct != 0.0 {
+		t.Errorf("Read LongTurnPct: got %.1f, want 0.0", read.LongTurnPct)
+	}
+}
+
 func TestGetPathTurnStatsEmpty(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

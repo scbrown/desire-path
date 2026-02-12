@@ -845,7 +845,7 @@ func (s *SQLiteStore) GetTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, e
 		subquery,
 	)
 
-	rows, err := s.db.QueryContext(ctx, query, append(args, args...)...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get turns: %w", err)
 	}
@@ -890,13 +890,12 @@ func (s *SQLiteStore) GetTurns(ctx context.Context, opts TurnOpts) ([]TurnRow, e
 // GetPathTurnStats returns per-tool turn statistics for the paths --turns view.
 func (s *SQLiteStore) GetPathTurnStats(ctx context.Context, threshold int, since time.Time) ([]ToolTurnStats, error) {
 	where := "WHERE turn_id != '' AND turn_length > 0"
-	var args []any
+	// threshold arg binds to the CASE expression's ? which appears first in the query.
+	args := []any{threshold}
 	if !since.IsZero() {
 		where += " AND timestamp >= ?"
 		args = append(args, since.UTC().Format(time.RFC3339Nano))
 	}
-	// threshold arg used twice: once for AVG, once for CASE
-	args = append(args, threshold)
 
 	query := fmt.Sprintf(`SELECT
 		tool_name,
