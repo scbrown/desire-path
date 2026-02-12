@@ -11,7 +11,7 @@ func TestLoadMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.DBPath != "" || cfg.DefaultSource != "" || cfg.DefaultFormat != "" || len(cfg.KnownTools) != 0 || len(cfg.TrackTools) != 0 {
+	if cfg.DBPath != "" || cfg.DefaultSource != "" || cfg.DefaultFormat != "" || cfg.StoreMode != "" || cfg.RemoteURL != "" || len(cfg.KnownTools) != 0 || len(cfg.TrackTools) != 0 {
 		t.Fatalf("expected empty config, got %+v", cfg)
 	}
 }
@@ -23,6 +23,8 @@ func TestSaveAndLoad(t *testing.T) {
 		DefaultSource: "claude-code",
 		KnownTools:    []string{"Read", "Write", "Bash"},
 		DefaultFormat: "json",
+		StoreMode:     "remote",
+		RemoteURL:     "http://localhost:7273",
 	}
 	if err := cfg.SaveTo(path); err != nil {
 		t.Fatalf("save: %v", err)
@@ -40,6 +42,12 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.DefaultFormat != cfg.DefaultFormat {
 		t.Errorf("default_format: got %q, want %q", loaded.DefaultFormat, cfg.DefaultFormat)
+	}
+	if loaded.StoreMode != cfg.StoreMode {
+		t.Errorf("store_mode: got %q, want %q", loaded.StoreMode, cfg.StoreMode)
+	}
+	if loaded.RemoteURL != cfg.RemoteURL {
+		t.Errorf("remote_url: got %q, want %q", loaded.RemoteURL, cfg.RemoteURL)
 	}
 	if len(loaded.KnownTools) != 3 {
 		t.Fatalf("known_tools: got %d items, want 3", len(loaded.KnownTools))
@@ -106,6 +114,11 @@ func TestGetSet(t *testing.T) {
 		{"known_tools empty", "known_tools", "", ""},
 		{"track_tools", "track_tools", `["Read","Bash"]`, `["Read","Bash"]`},
 		{"track_tools empty", "track_tools", "", ""},
+		{"store_mode local", "store_mode", "local", "local"},
+		{"store_mode remote", "store_mode", "remote", "remote"},
+		{"store_mode empty", "store_mode", "", ""},
+		{"remote_url", "remote_url", "http://localhost:7273", "http://localhost:7273"},
+		{"remote_url empty", "remote_url", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -145,6 +158,14 @@ func TestSetInvalidFormat(t *testing.T) {
 	err := cfg.Set("default_format", "xml")
 	if err == nil {
 		t.Fatal("expected error for invalid format")
+	}
+}
+
+func TestSetInvalidStoreMode(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.Set("store_mode", "cloud")
+	if err == nil {
+		t.Fatal("expected error for invalid store_mode")
 	}
 }
 
@@ -283,7 +304,7 @@ func TestSaveAndLoadEmptyConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFrom: %v", err)
 	}
-	if loaded.DBPath != "" || loaded.DefaultSource != "" || loaded.DefaultFormat != "" || len(loaded.KnownTools) != 0 || len(loaded.TrackTools) != 0 {
+	if loaded.DBPath != "" || loaded.DefaultSource != "" || loaded.DefaultFormat != "" || loaded.StoreMode != "" || loaded.RemoteURL != "" || len(loaded.KnownTools) != 0 || len(loaded.TrackTools) != 0 {
 		t.Errorf("expected all-empty config, got %+v", loaded)
 	}
 }

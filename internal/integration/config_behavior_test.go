@@ -163,6 +163,8 @@ func TestConfigSetGet(t *testing.T) {
 		{"default_source", "cursor"},
 		{"default_format", "json"},
 		{"known_tools", "Read,Write,Bash"},
+		{"store_mode", "remote"},
+		{"remote_url", "http://localhost:7273"},
 	}
 
 	for _, kv := range keys {
