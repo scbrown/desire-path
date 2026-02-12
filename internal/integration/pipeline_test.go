@@ -243,7 +243,7 @@ func TestBothFlags(t *testing.T) {
 
 // TestMultiSourceIngest verifies ingesting from multiple sources and
 // filtering by source in list output. It is table-driven across
-// [claude-code, kiro, codex] per Plan 005 Tier 3.
+// [claude-code, kiro, codex, cursor] per Plan 005 Tier 3.
 func TestMultiSourceIngest(t *testing.T) {
 	e := newEnv(t)
 
@@ -263,13 +263,16 @@ func TestMultiSourceIngest(t *testing.T) {
 		// Codex: uses item.completed with item.status="failed" for errors.
 		{"codex", "command_execution", e.codexFixture("command_execution", "bad command")},
 		{"codex", "file_change", e.codexFixture("file_change", "write failed")},
+		// Cursor: uses tool_name, conversation_id, error_message for failures.
+		{"cursor", "edit_file", e.cursorFixture("edit_file", "permission denied")},
+		{"cursor", "run_terminal_command", e.cursorFixture("run_terminal_command", "command failed")},
 	}
 
 	for _, tc := range cases {
 		e.mustRun(tc.payload, "ingest", "--source", tc.source)
 	}
 
-	// List all — should see all 7 desires (3 claude-code + 2 kiro + 2 codex).
+	// List all — should see all 9 desires (3 claude-code + 2 kiro + 2 codex + 2 cursor).
 	stdout, _ := e.mustRun(nil, "list", "--json")
 	var allDesires []struct {
 		ToolName string `json:"tool_name"`
@@ -278,23 +281,24 @@ func TestMultiSourceIngest(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &allDesires); err != nil {
 		t.Fatalf("parse list JSON: %v", err)
 	}
-	if len(allDesires) != 7 {
-		t.Fatalf("expected 7 desires total, got %d", len(allDesires))
+	if len(allDesires) != 9 {
+		t.Fatalf("expected 9 desires total, got %d", len(allDesires))
 	}
 
-	// Verify all three sources are represented.
+	// Verify all four sources are represented.
 	sourceSet := make(map[string]bool)
 	for _, d := range allDesires {
 		sourceSet[d.Source] = true
 	}
-	for _, s := range []string{"claude-code", "kiro", "codex"} {
+	for _, s := range []string{"claude-code", "kiro", "codex", "cursor"} {
 		if !sourceSet[s] {
 			t.Errorf("source %q not found in desires", s)
 		}
 	}
 
-	// Paths should show 6 unique tools:
-	// read_file(3), run_tests(1), write(1), shell(1), command_execution(1), file_change(1).
+	// Paths should show 8 unique tools:
+	// read_file(3), run_tests(1), write(1), shell(1), command_execution(1), file_change(1),
+	// edit_file(1), run_terminal_command(1).
 	stdout, _ = e.mustRun(nil, "paths", "--json")
 	var paths []struct {
 		Pattern string `json:"pattern"`
@@ -303,8 +307,8 @@ func TestMultiSourceIngest(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &paths); err != nil {
 		t.Fatalf("parse paths JSON: %v", err)
 	}
-	if len(paths) != 6 {
-		t.Fatalf("expected 6 paths, got %d", len(paths))
+	if len(paths) != 8 {
+		t.Fatalf("expected 8 paths, got %d", len(paths))
 	}
 	// read_file should be first (most frequent with count=2).
 	if paths[0].Pattern != "read_file" {
