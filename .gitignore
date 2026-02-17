@@ -10,3 +10,6 @@
 
 # mdbook build output
 docs/book/book/
+
+# mdbook build output
+book/_build/
