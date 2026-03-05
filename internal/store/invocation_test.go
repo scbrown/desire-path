@@ -879,8 +879,8 @@ func TestMigrateV5TurnColumns(t *testing.T) {
 	if err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&ver); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if ver != 5 {
-		t.Errorf("schema version: got %d, want 5", ver)
+	if ver != schemaVersion {
+		t.Errorf("schema version: got %d, want %d", ver, schemaVersion)
 	}
 
 	ctx := context.Background()

@@ -48,6 +48,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/turns", s.handleListTurns)
 	s.mux.HandleFunc("GET /api/v1/turns/patterns", s.handleTurnPatterns)
 	s.mux.HandleFunc("GET /api/v1/turns/tool-stats", s.handleToolTurnStats)
+	s.mux.HandleFunc("POST /api/v1/recoveries/detect", s.handleDetectRecovery)
+	s.mux.HandleFunc("GET /api/v1/recoveries", s.handleListRecoveries)
+	s.mux.HandleFunc("GET /api/v1/recoveries/stats", s.handleRecoveryStats)
 	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 }
 
@@ -354,6 +357,53 @@ func (s *Server) handleToolTurnStats(w http.ResponseWriter, r *http.Request) {
 	}
 	if stats == nil {
 		stats = []store.ToolTurnStat{}
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleDetectRecovery(w http.ResponseWriter, r *http.Request) {
+	var inv model.Invocation
+	if err := json.NewDecoder(r.Body).Decode(&inv); err != nil {
+		writeErr(w, http.StatusBadRequest, "decoding invocation: %v", err)
+		return
+	}
+	if err := s.store.DetectAndRecordRecovery(r.Context(), inv); err != nil {
+		writeErr(w, http.StatusInternalServerError, "detect recovery: %v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleListRecoveries(w http.ResponseWriter, r *http.Request) {
+	since, err := parseSince(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	limit, err := parseInt(r, "limit")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	recoveries, err := s.store.ListRecoveries(r.Context(), since, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list recoveries: %v", err)
+		return
+	}
+	if recoveries == nil {
+		recoveries = []model.Recovery{}
+	}
+	writeJSON(w, http.StatusOK, recoveries)
+}
+
+func (s *Server) handleRecoveryStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.store.RecoveryStats(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "recovery stats: %v", err)
+		return
+	}
+	if stats == nil {
+		stats = []model.RecoveryStat{}
 	}
 	writeJSON(w, http.StatusOK, stats)
 }

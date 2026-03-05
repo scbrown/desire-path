@@ -88,6 +88,15 @@ func (f *fakeStore) TurnPatternStats(context.Context, store.TurnOpts) ([]store.T
 func (f *fakeStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.ToolTurnStat, error) {
 	return nil, nil
 }
+func (f *fakeStore) DetectAndRecordRecovery(context.Context, model.Invocation) error {
+	return nil
+}
+func (f *fakeStore) ListRecoveries(context.Context, time.Time, int) ([]model.Recovery, error) {
+	return nil, nil
+}
+func (f *fakeStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error) {
+	return nil, nil
+}
 func (f *fakeStore) Close() error { return nil }
 
 // registerTestSource registers a fake source and returns a cleanup function

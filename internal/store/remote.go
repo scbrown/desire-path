@@ -360,6 +360,33 @@ func (r *RemoteStore) ToolTurnStats(ctx context.Context, opts TurnOpts) ([]ToolT
 	return stats, nil
 }
 
+func (r *RemoteStore) DetectAndRecordRecovery(ctx context.Context, inv model.Invocation) error {
+	return r.postJSON(ctx, "/api/v1/recoveries/detect", inv, nil)
+}
+
+func (r *RemoteStore) ListRecoveries(ctx context.Context, since time.Time, limit int) ([]model.Recovery, error) {
+	q := url.Values{}
+	if !since.IsZero() {
+		q.Set("since", since.UTC().Format(time.RFC3339))
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	var recoveries []model.Recovery
+	if err := r.getJSON(ctx, "/api/v1/recoveries", q, &recoveries); err != nil {
+		return nil, err
+	}
+	return recoveries, nil
+}
+
+func (r *RemoteStore) RecoveryStats(ctx context.Context) ([]model.RecoveryStat, error) {
+	var stats []model.RecoveryStat
+	if err := r.getJSON(ctx, "/api/v1/recoveries/stats", nil, &stats); err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
 // Close is a no-op for the remote store.
 func (r *RemoteStore) Close() error {
 	return nil

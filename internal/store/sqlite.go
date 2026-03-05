@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 // SQLiteStore implements Store using a local SQLite database.
 type SQLiteStore struct {
@@ -91,6 +91,12 @@ func (s *SQLiteStore) migrate() error {
 
 	if ver < 5 {
 		if err := s.migrateV5(); err != nil {
+			return err
+		}
+	}
+
+	if ver < 6 {
+		if err := s.migrateV6(); err != nil {
 			return err
 		}
 	}
@@ -216,6 +222,122 @@ func (s *SQLiteStore) migrateV5() error {
 		}
 	}
 	return nil
+}
+
+func (s *SQLiteStore) migrateV6() error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS recoveries (
+			id         TEXT PRIMARY KEY,
+			tool_name  TEXT NOT NULL,
+			desire_id  TEXT,
+			timestamp  TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_recoveries_tool_name ON recoveries(tool_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_recoveries_timestamp ON recoveries(timestamp)`,
+		`UPDATE schema_version SET version = 6`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v6: %w", err)
+		}
+	}
+	return nil
+}
+
+// DetectAndRecordRecovery checks if a successful invocation represents a recovery
+// from a previous failure pattern. If the tool had recent desires (failures) but
+// this invocation succeeded, record a recovery event.
+func (s *SQLiteStore) DetectAndRecordRecovery(ctx context.Context, inv model.Invocation) error {
+	if inv.IsError {
+		return nil // Only successes can be recoveries
+	}
+
+	// Check if this tool had any recent desires (failures) in the last 7 days
+	var desireID string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM desires WHERE tool_name = ? AND timestamp > datetime(?, '-7 days') ORDER BY timestamp DESC LIMIT 1`,
+		inv.ToolName, inv.Timestamp.UTC().Format(time.RFC3339Nano),
+	).Scan(&desireID)
+	if err != nil {
+		return nil // No recent failures — not a recovery
+	}
+
+	// Check we haven't already recorded a recovery for this tool since the last failure
+	var existingCount int
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM recoveries WHERE tool_name = ? AND timestamp > (SELECT MAX(timestamp) FROM desires WHERE tool_name = ?)`,
+		inv.ToolName, inv.ToolName,
+	).Scan(&existingCount)
+	if err == nil && existingCount > 0 {
+		return nil // Already recorded recovery for this failure window
+	}
+
+	// Record the recovery
+	id := inv.ID + "-recovery"
+	_, err = s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO recoveries (id, tool_name, desire_id, timestamp) VALUES (?, ?, ?, ?)`,
+		id, inv.ToolName, desireID, inv.Timestamp.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("insert recovery: %w", err)
+	}
+	return nil
+}
+
+// ListRecoveries returns recovery events matching the filter options.
+func (s *SQLiteStore) ListRecoveries(ctx context.Context, since time.Time, limit int) ([]model.Recovery, error) {
+	query := "SELECT id, tool_name, desire_id, timestamp FROM recoveries WHERE 1=1"
+	var args []any
+	if !since.IsZero() {
+		query += " AND timestamp >= ?"
+		args = append(args, since.UTC().Format(time.RFC3339Nano))
+	}
+	query += " ORDER BY timestamp DESC"
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query recoveries: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.Recovery
+	for rows.Next() {
+		var r model.Recovery
+		var ts string
+		if err := rows.Scan(&r.ID, &r.ToolName, &r.DesireID, &ts); err != nil {
+			return nil, fmt.Errorf("scan recovery: %w", err)
+		}
+		r.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// RecoveryStats returns counts of recoveries per tool.
+func (s *SQLiteStore) RecoveryStats(ctx context.Context) ([]model.RecoveryStat, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT tool_name, COUNT(*) as count, MAX(timestamp) as last_recovery
+		FROM recoveries GROUP BY tool_name ORDER BY count DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query recovery stats: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.RecoveryStat
+	for rows.Next() {
+		var r model.RecoveryStat
+		var ts string
+		if err := rows.Scan(&r.ToolName, &r.Count, &ts); err != nil {
+			return nil, fmt.Errorf("scan recovery stat: %w", err)
+		}
+		r.LastRecovery, _ = time.Parse(time.RFC3339Nano, ts)
+		results = append(results, r)
+	}
+	return results, rows.Err()
 }
 
 // RecordDesire persists a single failed tool call.

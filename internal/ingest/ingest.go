@@ -60,6 +60,11 @@ func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sou
 		return model.Invocation{}, fmt.Errorf("storing invocation: %w", err)
 	}
 
+	// Detect recovery: successful invocation for a tool that previously failed
+	if !inv.IsError {
+		_ = s.DetectAndRecordRecovery(ctx, inv) // best-effort
+	}
+
 	if inv.IsError {
 		d := toDesire(fields, sourceName, inv.Timestamp, inv.Metadata)
 		if err := s.RecordDesire(ctx, d); err != nil {

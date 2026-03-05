@@ -81,3 +81,19 @@ type Invocation struct {
 	TurnSequence int             `json:"turn_sequence"`
 	TurnLength   int             `json:"turn_length"`
 }
+
+// Recovery represents a detected recovery event — when a previously-failing
+// tool call pattern succeeds.
+type Recovery struct {
+	ID        string    `json:"id"`
+	ToolName  string    `json:"tool_name"`
+	DesireID  string    `json:"desire_id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// RecoveryStat holds aggregated recovery counts per tool.
+type RecoveryStat struct {
+	ToolName     string    `json:"tool_name"`
+	Count        int       `json:"count"`
+	LastRecovery time.Time `json:"last_recovery"`
+}

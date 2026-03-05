@@ -60,6 +60,16 @@ type Store interface {
 	// ToolTurnStats returns per-tool turn statistics for the paths --turns view.
 	ToolTurnStats(ctx context.Context, opts TurnOpts) ([]ToolTurnStat, error)
 
+	// DetectAndRecordRecovery checks if a successful invocation represents
+	// a recovery from a previous failure pattern.
+	DetectAndRecordRecovery(ctx context.Context, inv model.Invocation) error
+
+	// ListRecoveries returns recovery events, optionally filtered by time.
+	ListRecoveries(ctx context.Context, since time.Time, limit int) ([]model.Recovery, error)
+
+	// RecoveryStats returns aggregated recovery counts per tool.
+	RecoveryStats(ctx context.Context) ([]model.RecoveryStat, error)
+
 	// Close releases any resources held by the store.
 	Close() error
 }

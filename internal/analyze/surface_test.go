@@ -65,6 +65,9 @@ func (m *mockStore) InvocationStats(context.Context) (store.InvocationStatsResul
 }
 func (m *mockStore) ListTurns(context.Context, store.TurnOpts) ([]store.TurnRow, error)        { return nil, nil }
 func (m *mockStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.ToolTurnStat, error) { return nil, nil }
+func (m *mockStore) DetectAndRecordRecovery(context.Context, model.Invocation) error             { return nil }
+func (m *mockStore) ListRecoveries(context.Context, time.Time, int) ([]model.Recovery, error)    { return nil, nil }
+func (m *mockStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error)                 { return nil, nil }
 func (m *mockStore) Close() error                                                                { return nil }
 
 func TestSurfaceTurnPatternDesires_CreatesDesires(t *testing.T) {
