@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // SQLiteStore implements Store using a local SQLite database.
 type SQLiteStore struct {
@@ -97,6 +97,12 @@ func (s *SQLiteStore) migrate() error {
 
 	if ver < 6 {
 		if err := s.migrateV6(); err != nil {
+			return err
+		}
+	}
+
+	if ver < 7 {
+		if err := s.migrateV7(); err != nil {
 			return err
 		}
 	}
@@ -1104,6 +1110,243 @@ func (s *SQLiteStore) ToolTurnStats(ctx context.Context, opts TurnOpts) ([]ToolT
 		stats = append(stats, ts)
 	}
 	return stats, rows.Err()
+}
+
+func (s *SQLiteStore) migrateV7() error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS doc_mappings (
+			id          TEXT PRIMARY KEY,
+			pattern     TEXT NOT NULL,
+			tool        TEXT NOT NULL DEFAULT '',
+			doc_path    TEXT NOT NULL,
+			doc_excerpt TEXT NOT NULL DEFAULT '',
+			match_count INTEGER NOT NULL DEFAULT 0,
+			created_at  TEXT NOT NULL,
+			updated_at  TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_doc_mappings_tool ON doc_mappings(tool)`,
+		`CREATE INDEX IF NOT EXISTS idx_doc_mappings_pattern ON doc_mappings(pattern)`,
+		`UPDATE schema_version SET version = 7`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate v7: %w", err)
+		}
+	}
+	return nil
+}
+
+// SetDocMapping creates or updates a doc mapping.
+func (s *SQLiteStore) SetDocMapping(ctx context.Context, dm model.DocMapping) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO doc_mappings (id, pattern, tool, doc_path, doc_excerpt, match_count, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET pattern=?, tool=?, doc_path=?, doc_excerpt=?, updated_at=?`,
+		dm.ID, dm.Pattern, dm.Tool, dm.DocPath, dm.DocExcerpt, now, now,
+		dm.Pattern, dm.Tool, dm.DocPath, dm.DocExcerpt, now,
+	)
+	if err != nil {
+		return fmt.Errorf("set doc mapping: %w", err)
+	}
+	return nil
+}
+
+// GetDocMappings returns all doc mappings.
+func (s *SQLiteStore) GetDocMappings(ctx context.Context) ([]model.DocMapping, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, pattern, tool, doc_path, doc_excerpt, match_count, created_at, updated_at
+		 FROM doc_mappings ORDER BY match_count DESC, updated_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list doc mappings: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.DocMapping
+	for rows.Next() {
+		var dm model.DocMapping
+		var createdAt, updatedAt string
+		if err := rows.Scan(&dm.ID, &dm.Pattern, &dm.Tool, &dm.DocPath, &dm.DocExcerpt,
+			&dm.MatchCount, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan doc mapping: %w", err)
+		}
+		dm.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		dm.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		results = append(results, dm)
+	}
+	return results, rows.Err()
+}
+
+// DeleteDocMapping removes a doc mapping by ID.
+func (s *SQLiteStore) DeleteDocMapping(ctx context.Context, id string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM doc_mappings WHERE id = ?`, id)
+	if err != nil {
+		return false, fmt.Errorf("delete doc mapping: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return n > 0, nil
+}
+
+// SuggestDocs returns doc mappings matching a tool name and/or error text.
+// Matches on: exact tool match, pattern LIKE match against error text, or pattern LIKE match against tool name.
+func (s *SQLiteStore) SuggestDocs(ctx context.Context, tool, errorText string) ([]model.DocMapping, error) {
+	query := `SELECT id, pattern, tool, doc_path, doc_excerpt, match_count, created_at, updated_at
+		FROM doc_mappings WHERE 1=1`
+	var args []any
+
+	if tool != "" {
+		// Match mappings for this specific tool, or mappings with no tool filter
+		query += ` AND (tool = ? OR tool = '')`
+		args = append(args, tool)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("suggest docs: %w", err)
+	}
+	defer rows.Close()
+
+	var all []model.DocMapping
+	for rows.Next() {
+		var dm model.DocMapping
+		var createdAt, updatedAt string
+		if err := rows.Scan(&dm.ID, &dm.Pattern, &dm.Tool, &dm.DocPath, &dm.DocExcerpt,
+			&dm.MatchCount, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan doc mapping: %w", err)
+		}
+		dm.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		dm.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		all = append(all, dm)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Filter by pattern match against tool name or error text
+	var matched []model.DocMapping
+	for _, dm := range all {
+		if matchesPattern(dm.Pattern, tool) || matchesPattern(dm.Pattern, errorText) {
+			matched = append(matched, dm)
+		}
+	}
+	return matched, nil
+}
+
+// matchesPattern checks if text matches a pattern using glob-style matching.
+// Supports * as wildcard.
+func matchesPattern(pattern, text string) bool {
+	if pattern == "" || text == "" {
+		return false
+	}
+	// Exact match
+	if pattern == text {
+		return true
+	}
+	// Contains match (pattern appears as substring)
+	if strings.Contains(text, pattern) {
+		return true
+	}
+	// Glob-style: convert * to match anything
+	if strings.Contains(pattern, "*") {
+		parts := strings.Split(pattern, "*")
+		idx := 0
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			found := strings.Index(text[idx:], part)
+			if found < 0 {
+				return false
+			}
+			idx += found + len(part)
+		}
+		return true
+	}
+	return false
+}
+
+// IncrementDocMatchCount bumps the match_count for a doc mapping.
+func (s *SQLiteStore) IncrementDocMatchCount(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE doc_mappings SET match_count = match_count + 1, updated_at = ? WHERE id = ?`,
+		time.Now().UTC().Format(time.RFC3339Nano), id,
+	)
+	if err != nil {
+		return fmt.Errorf("increment doc match count: %w", err)
+	}
+	return nil
+}
+
+// StrugglingTools returns tools with high failure rates.
+func (s *SQLiteStore) StrugglingTools(ctx context.Context, opts StrugglingOpts) ([]model.StrugglingTool, error) {
+	minFails := opts.MinFails
+	if minFails <= 0 {
+		minFails = 3
+	}
+
+	query := `SELECT
+		i.tool_name,
+		SUM(CASE WHEN i.is_error = 1 THEN 1 ELSE 0 END) as failures,
+		COUNT(*) as total,
+		COUNT(DISTINCT i.instance_id) as sessions
+	FROM invocations i WHERE 1=1`
+	var args []any
+
+	if !opts.Since.IsZero() {
+		query += ` AND i.timestamp >= ?`
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	if opts.SessionID != "" {
+		query += ` AND i.instance_id = ?`
+		args = append(args, opts.SessionID)
+	}
+
+	query += ` GROUP BY i.tool_name HAVING failures >= ?`
+	args = append(args, minFails)
+	query += ` ORDER BY CAST(failures AS REAL) / CAST(total AS REAL) DESC`
+
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(` LIMIT %d`, opts.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("struggling tools: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.StrugglingTool
+	for rows.Next() {
+		var st model.StrugglingTool
+		if err := rows.Scan(&st.ToolName, &st.Failures, &st.Total, &st.Sessions); err != nil {
+			return nil, fmt.Errorf("scan struggling tool: %w", err)
+		}
+		if st.Total > 0 {
+			st.FailureRate = float64(st.Failures) / float64(st.Total)
+		}
+		results = append(results, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Check which tools have doc mappings
+	docRows, err := s.db.QueryContext(ctx, `SELECT DISTINCT tool FROM doc_mappings WHERE tool != ''`)
+	if err == nil {
+		defer docRows.Close()
+		docTools := make(map[string]bool)
+		for docRows.Next() {
+			var t string
+			if err := docRows.Scan(&t); err == nil {
+				docTools[t] = true
+			}
+		}
+		for i := range results {
+			results[i].HasDoc = docTools[results[i].ToolName]
+		}
+	}
+
+	return results, nil
 }
 
 // Close releases the database connection.

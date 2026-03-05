@@ -70,6 +70,24 @@ type Store interface {
 	// RecoveryStats returns aggregated recovery counts per tool.
 	RecoveryStats(ctx context.Context) ([]model.RecoveryStat, error)
 
+	// SetDocMapping creates or updates a doc mapping.
+	SetDocMapping(ctx context.Context, dm model.DocMapping) error
+
+	// GetDocMappings returns all doc mappings.
+	GetDocMappings(ctx context.Context) ([]model.DocMapping, error)
+
+	// DeleteDocMapping removes a doc mapping by ID.
+	DeleteDocMapping(ctx context.Context, id string) (bool, error)
+
+	// SuggestDocs returns doc mappings matching a tool name and/or error pattern.
+	SuggestDocs(ctx context.Context, tool, errorText string) ([]model.DocMapping, error)
+
+	// IncrementDocMatchCount bumps the match_count for a doc mapping.
+	IncrementDocMatchCount(ctx context.Context, id string) error
+
+	// StrugglingTools returns tools with high failure rates.
+	StrugglingTools(ctx context.Context, opts StrugglingOpts) ([]model.StrugglingTool, error)
+
 	// Close releases any resources held by the store.
 	Close() error
 }
@@ -181,6 +199,14 @@ type TurnPattern struct {
 	TotalLength int     `json:"-"`
 	Sessions    int     `json:"sessions"`
 	sessions    map[string]bool
+}
+
+// StrugglingOpts controls filtering for StrugglingTools.
+type StrugglingOpts struct {
+	Since     time.Time // Only consider invocations after this time.
+	MinFails  int       // Minimum failures to qualify (default: 3).
+	SessionID string    // Filter to a specific session.
+	Limit     int       // Maximum results; 0 means no limit.
 }
 
 // ToolTurnStat holds per-tool turn statistics.

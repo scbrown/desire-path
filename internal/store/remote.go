@@ -387,6 +387,66 @@ func (r *RemoteStore) RecoveryStats(ctx context.Context) ([]model.RecoveryStat, 
 	return stats, nil
 }
 
+func (r *RemoteStore) SetDocMapping(ctx context.Context, dm model.DocMapping) error {
+	return r.postJSON(ctx, "/api/v1/doc-mappings", dm, nil)
+}
+
+func (r *RemoteStore) GetDocMappings(ctx context.Context) ([]model.DocMapping, error) {
+	var mappings []model.DocMapping
+	if err := r.getJSON(ctx, "/api/v1/doc-mappings", nil, &mappings); err != nil {
+		return nil, err
+	}
+	return mappings, nil
+}
+
+func (r *RemoteStore) DeleteDocMapping(ctx context.Context, id string) (bool, error) {
+	err := r.postJSON(ctx, "/api/v1/doc-mappings/delete", map[string]string{"id": id}, nil)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *RemoteStore) SuggestDocs(ctx context.Context, tool, errorText string) ([]model.DocMapping, error) {
+	q := url.Values{}
+	if tool != "" {
+		q.Set("tool", tool)
+	}
+	if errorText != "" {
+		q.Set("error", errorText)
+	}
+	var mappings []model.DocMapping
+	if err := r.getJSON(ctx, "/api/v1/doc-mappings/suggest", q, &mappings); err != nil {
+		return nil, err
+	}
+	return mappings, nil
+}
+
+func (r *RemoteStore) IncrementDocMatchCount(ctx context.Context, id string) error {
+	return r.postJSON(ctx, "/api/v1/doc-mappings/match", map[string]string{"id": id}, nil)
+}
+
+func (r *RemoteStore) StrugglingTools(ctx context.Context, opts StrugglingOpts) ([]model.StrugglingTool, error) {
+	q := url.Values{}
+	if !opts.Since.IsZero() {
+		q.Set("since", opts.Since.UTC().Format(time.RFC3339))
+	}
+	if opts.MinFails > 0 {
+		q.Set("min_fails", strconv.Itoa(opts.MinFails))
+	}
+	if opts.SessionID != "" {
+		q.Set("session", opts.SessionID)
+	}
+	if opts.Limit > 0 {
+		q.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	var tools []model.StrugglingTool
+	if err := r.getJSON(ctx, "/api/v1/struggling", q, &tools); err != nil {
+		return nil, err
+	}
+	return tools, nil
+}
+
 // Close is a no-op for the remote store.
 func (r *RemoteStore) Close() error {
 	return nil
