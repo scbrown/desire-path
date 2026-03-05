@@ -97,6 +97,16 @@ func (f *fakeStore) ListRecoveries(context.Context, time.Time, int) ([]model.Rec
 func (f *fakeStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error) {
 	return nil, nil
 }
+func (f *fakeStore) SetDocMapping(context.Context, model.DocMapping) error { return nil }
+func (f *fakeStore) GetDocMappings(context.Context) ([]model.DocMapping, error) { return nil, nil }
+func (f *fakeStore) DeleteDocMapping(context.Context, string) (bool, error) { return false, nil }
+func (f *fakeStore) SuggestDocs(context.Context, string, string) ([]model.DocMapping, error) {
+	return nil, nil
+}
+func (f *fakeStore) IncrementDocMatchCount(context.Context, string) error { return nil }
+func (f *fakeStore) StrugglingTools(context.Context, store.StrugglingOpts) ([]model.StrugglingTool, error) {
+	return nil, nil
+}
 func (f *fakeStore) Close() error { return nil }
 
 // registerTestSource registers a fake source and returns a cleanup function

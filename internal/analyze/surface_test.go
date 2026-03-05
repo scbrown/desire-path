@@ -68,6 +68,14 @@ func (m *mockStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.Tool
 func (m *mockStore) DetectAndRecordRecovery(context.Context, model.Invocation) error             { return nil }
 func (m *mockStore) ListRecoveries(context.Context, time.Time, int) ([]model.Recovery, error)    { return nil, nil }
 func (m *mockStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error)                 { return nil, nil }
+func (m *mockStore) SetDocMapping(context.Context, model.DocMapping) error                       { return nil }
+func (m *mockStore) GetDocMappings(context.Context) ([]model.DocMapping, error)                  { return nil, nil }
+func (m *mockStore) DeleteDocMapping(context.Context, string) (bool, error)                      { return false, nil }
+func (m *mockStore) SuggestDocs(context.Context, string, string) ([]model.DocMapping, error)     { return nil, nil }
+func (m *mockStore) IncrementDocMatchCount(context.Context, string) error                        { return nil }
+func (m *mockStore) StrugglingTools(context.Context, store.StrugglingOpts) ([]model.StrugglingTool, error) {
+	return nil, nil
+}
 func (m *mockStore) Close() error                                                                { return nil }
 
 func TestSurfaceTurnPatternDesires_CreatesDesires(t *testing.T) {
