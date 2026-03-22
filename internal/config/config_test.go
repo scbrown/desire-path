@@ -171,8 +171,8 @@ func TestSetInvalidStoreMode(t *testing.T) {
 
 func TestValidKeys(t *testing.T) {
 	keys := ValidKeys()
-	if len(keys) != 8 {
-		t.Fatalf("expected 8 keys, got %d", len(keys))
+	if len(keys) != 9 {
+		t.Fatalf("expected 9 keys, got %d", len(keys))
 	}
 	// Verify sorted order.
 	for i := 1; i < len(keys); i++ {

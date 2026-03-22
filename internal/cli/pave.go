@@ -26,17 +26,20 @@ var paveCmd = &cobra.Command{
 	Short: "Turn aliases into active tool-call intercepts",
 	Long: `Pave makes aliases actionable. Two modes:
 
-  --hook       Install a PreToolUse hook that intercepts hallucinated tool names
-               in real time. When Claude tries to call a tool that has an alias,
-               the hook blocks the call and tells Claude to use the correct name.
+  --hook       Install hooks for tool-call interception:
+               - PreToolUse: blocks hallucinated tool names and rewrites parameters
+               - PostToolUseFailure: auto-corrects failed commands when auto_correct
+                 is enabled (dp config set auto_correct true)
 
   --agents-md  Generate AGENTS.md / CLAUDE.md rules from alias data. These rules
                prevent hallucination proactively by telling Claude which tool names
                are wrong before it tries them. Output goes to stdout by default,
                or use --append to write directly to a file.
 
-Belt and suspenders: --hook is reactive (catches mistakes), --agents-md is
-preventive (stops them before they happen). Use both for maximum coverage.`,
+Three layers of defense:
+  1. --agents-md is preventive (stops mistakes before they happen)
+  2. PreToolUse hook is reactive (catches and rewrites in real time)
+  3. PostToolUseFailure hook is corrective (re-executes failed commands)`,
 	Example: `  # Install the PreToolUse intercept hook
   dp pave --hook
 
@@ -74,6 +77,9 @@ func init() {
 // dpPaveCheckCommand is the command installed in the PreToolUse hook.
 const dpPaveCheckCommand = "dp pave-check"
 
+// dpPaveCorrectCommand is the command installed in the PostToolUseFailure hook.
+const dpPaveCorrectCommand = "dp pave-correct"
+
 // runPaveHook installs a PreToolUse hook into ~/.claude/settings.json
 // that runs dp pave-check on every tool call.
 func runPaveHook() error {
@@ -91,24 +97,36 @@ func runPaveHook() error {
 		return err
 	}
 
-	// Check if already installed.
-	if source.HasDPHook(settings, "PreToolUse", dpPaveCheckCommand) {
+	preInstalled := source.HasDPHook(settings, "PreToolUse", dpPaveCheckCommand)
+	postInstalled := source.HasDPHook(settings, "PostToolUseFailure", dpPaveCorrectCommand)
+
+	if preInstalled && postInstalled {
 		if jsonOutput {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			return enc.Encode(map[string]interface{}{
 				"status": "already_configured",
-				"hook":   "PreToolUse",
+				"hooks":  []string{"PreToolUse", "PostToolUseFailure"},
 			})
 		}
-		fmt.Fprintln(os.Stdout, "PreToolUse hook already installed.")
+		fmt.Fprintln(os.Stdout, "Pave hooks already installed (PreToolUse + PostToolUseFailure).")
 		return nil
 	}
 
-	// Install the hook.
-	if err := source.MergeClaudeHook(settings, "PreToolUse", dpPaveCheckCommand, 3000); err != nil {
-		return err
+	// Install PreToolUse hook.
+	if !preInstalled {
+		if err := source.MergeClaudeHook(settings, "PreToolUse", dpPaveCheckCommand, 3000); err != nil {
+			return err
+		}
 	}
+
+	// Install PostToolUseFailure hook for auto-correct.
+	if !postInstalled {
+		if err := source.MergeClaudeHook(settings, "PostToolUseFailure", dpPaveCorrectCommand, 5000); err != nil {
+			return err
+		}
+	}
+
 	if err := source.WriteClaudeSettings(settingsPath, settings); err != nil {
 		return err
 	}
@@ -118,11 +136,13 @@ func runPaveHook() error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(map[string]interface{}{
 			"status": "configured",
-			"hook":   "PreToolUse",
+			"hooks":  []string{"PreToolUse", "PostToolUseFailure"},
 		})
 	}
-	fmt.Fprintln(os.Stdout, "PreToolUse intercept hook installed!")
-	fmt.Fprintln(os.Stdout, "Hallucinated tool names matching aliases will now be blocked automatically.")
+	fmt.Fprintln(os.Stdout, "Pave hooks installed!")
+	fmt.Fprintln(os.Stdout, "  PreToolUse: blocks hallucinated tool names, rewrites parameters")
+	fmt.Fprintln(os.Stdout, "  PostToolUseFailure: auto-corrects failed commands (when auto_correct=true)")
+	fmt.Fprintln(os.Stdout, "Enable auto-correct: dp config set auto_correct true")
 	fmt.Fprintln(os.Stdout, "Manage aliases with: dp alias <from> <to>")
 	return nil
 }

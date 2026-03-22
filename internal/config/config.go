@@ -27,6 +27,7 @@ type Config struct {
 	StoreMode            string   `toml:"store_mode,omitempty" json:"store_mode,omitempty"`
 	RemoteURL            string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
 	TurnLengthThreshold  int      `toml:"turn_length_threshold,omitempty" json:"turn_length_threshold,omitempty"`
+	AutoCorrect          bool     `toml:"auto_correct,omitempty" json:"auto_correct,omitempty"`
 }
 
 // EffectiveTurnLengthThreshold returns the configured threshold, or the default.
@@ -39,6 +40,7 @@ func (c *Config) EffectiveTurnLengthThreshold() int {
 
 // validKeys lists the allowed configuration keys.
 var validKeys = map[string]bool{
+	"auto_correct":           true,
 	"db_path":                true,
 	"default_source":         true,
 	"known_tools":            true,
@@ -51,7 +53,7 @@ var validKeys = map[string]bool{
 
 // ValidKeys returns the sorted list of valid configuration keys.
 func ValidKeys() []string {
-	return []string{"db_path", "default_format", "default_source", "known_tools", "remote_url", "store_mode", "track_tools", "turn_length_threshold"}
+	return []string{"auto_correct", "db_path", "default_format", "default_source", "known_tools", "remote_url", "store_mode", "track_tools", "turn_length_threshold"}
 }
 
 // Path returns the default config file path (~/.dp/config.toml).
@@ -169,6 +171,11 @@ func (c *Config) Get(key string) (string, error) {
 		return "", fmt.Errorf("unknown config key %q (valid keys: %s)", key, strings.Join(ValidKeys(), ", "))
 	}
 	switch key {
+	case "auto_correct":
+		if c.AutoCorrect {
+			return "true", nil
+		}
+		return "false", nil
 	case "db_path":
 		return c.DBPath, nil
 	case "default_source":
@@ -206,6 +213,15 @@ func (c *Config) Set(key, value string) error {
 		return fmt.Errorf("unknown config key %q (valid keys: %s)", key, strings.Join(ValidKeys(), ", "))
 	}
 	switch key {
+	case "auto_correct":
+		switch value {
+		case "true", "1", "on":
+			c.AutoCorrect = true
+		case "false", "0", "off", "":
+			c.AutoCorrect = false
+		default:
+			return fmt.Errorf("auto_correct must be true or false, got %q", value)
+		}
 	case "db_path":
 		c.DBPath = value
 	case "default_source":
