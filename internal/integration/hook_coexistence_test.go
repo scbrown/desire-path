@@ -90,7 +90,7 @@ func TestBothIdempotent(t *testing.T) {
 	hooks := settingsHooks(t, settings)
 
 	assertHookCount(t, hooks, "PostToolUse", 1)
-	assertHookCount(t, hooks, "PostToolUseFailure", 1)
+	assertHookCount(t, hooks, "PostToolUseFailure", 2) // ingest + pave auto-correct
 	assertHookCount(t, hooks, "PreToolUse", 1)
 }
 
