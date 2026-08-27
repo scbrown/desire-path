@@ -143,7 +143,10 @@ func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
 		return false, fmt.Errorf("parse hooks: %w", err)
 	}
 
-	var postUse, postFailure []claudeHookEntry
+	var preUse, postUse, postFailure []claudeHookEntry
+	if raw, ok := hooks["PreToolUse"]; ok {
+		_ = json.Unmarshal(raw, &preUse)
+	}
 	if raw, ok := hooks["PostToolUse"]; ok {
 		_ = json.Unmarshal(raw, &postUse)
 	}
@@ -154,6 +157,7 @@ func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
 	// hook is present too; this lets `dp init` converge upgrades.
 	return hasDPHookCommand(postUse, dpHookCommand) &&
 		hasDPHookCommand(postUse, dpSignpostCommand) &&
+		hasDPHookCommand(preUse, dpSignpostPrefetchCommand) &&
 		hasDPHookCommand(postFailure, dpHookCommand), nil
 }
 
@@ -180,6 +184,7 @@ const dpHookCommand = "dp ingest --source claude-code"
 // dpSignpostCommand is a sibling PostToolUse hook. It never wraps the invoked
 // command; it observes completed Bash searches and may emit disjoint context.
 const dpSignpostCommand = "dp signpost"
+const dpSignpostPrefetchCommand = "dp signpost-prefetch"
 
 // dpLegacyHookCommand is the old command that may exist in user settings.
 // IsInstalled checks for both so upgrades are detected correctly.
@@ -187,7 +192,7 @@ const dpLegacyHookCommand = "dp record --source claude-code"
 
 // installClaudeHooks performs the Claude Code setup using the given settings path.
 // It installs dp ingest for both PostToolUse and PostToolUseFailure, plus the
-// Bash-scoped signposting sibling on PostToolUse. The dual-write in the ingest
+// Bash-scoped signposting prefetch/gating siblings. The dual-write in the ingest
 // pipeline ensures failures appear in both invocations and desires tables.
 func installClaudeHooks(settingsPath string) error {
 	settings, err := readClaudeSettings(settingsPath)
@@ -200,6 +205,7 @@ func installClaudeHooks(settingsPath string) error {
 		command string
 	}
 	defs := []hookDef{
+		{"PreToolUse", dpSignpostPrefetchCommand},
 		{"PostToolUse", dpHookCommand},
 		{"PostToolUseFailure", dpHookCommand},
 		{"PostToolUse", dpSignpostCommand},
@@ -207,7 +213,7 @@ func installClaudeHooks(settingsPath string) error {
 
 	for _, d := range defs {
 		matcher := ".*"
-		if d.command == dpSignpostCommand {
+		if d.command == dpSignpostCommand || d.command == dpSignpostPrefetchCommand {
 			matcher = "Bash"
 		}
 		hooks, err := mergeHookEvent(settings, d.event, claudeHookEntry{

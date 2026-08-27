@@ -2,10 +2,11 @@
 set -u
 
 usage() {
-	printf '%s\n' 'usage: eval/run-campaign.sh --assignments FILE --corpus-root DIR --artifacts DIR --dp PATH --bobbin-server URL [--signpost-timeout-ms N] [--limit N]'
+	printf '%s\n' 'usage: eval/run-campaign.sh --assignments FILE --acceptance-sets FILE --corpus-root DIR --artifacts DIR --dp PATH --bobbin-server URL [--signpost-timeout-ms N] [--limit N]'
 }
 
 assignments=
+acceptance_sets=
 corpus_root=
 artifacts=
 dp_bin=
@@ -15,6 +16,7 @@ signpost_timeout_ms=150
 while (($#)); do
 	case "$1" in
 		--assignments) assignments=$2; shift 2 ;;
+		--acceptance-sets) acceptance_sets=$2; shift 2 ;;
 		--corpus-root) corpus_root=$2; shift 2 ;;
 		--artifacts) artifacts=$2; shift 2 ;;
 		--dp) dp_bin=$2; shift 2 ;;
@@ -25,7 +27,7 @@ while (($#)); do
 		*) usage >&2; exit 2 ;;
 	esac
 done
-for required in assignments corpus_root artifacts dp_bin bobbin_server; do
+for required in assignments acceptance_sets corpus_root artifacts dp_bin bobbin_server; do
 	if [[ -z ${!required} ]]; then
 		printf 'missing --%s\n' "${required//_/-}" >&2
 		exit 2
@@ -62,7 +64,7 @@ prompt_for() {
 }
 
 score_one() {
-	local assignment=$1 raw=$2 events=$3 model=$4 condition=$5
+	local assignment=$1 acceptance=$2 raw=$3 events=$4 model=$5 condition=$6
 	local final turns tokens adopted shown correct signpost_correct
 	if [[ $model == codex ]]; then
 		final=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="agent_message") | .item.text] | last // ""' "$raw")
@@ -79,7 +81,9 @@ score_one() {
 	if [[ -s $events ]]; then
 		shown=$(jq -s 'any(.[]; .signpost_shown == true)' "$events")
 	fi
-	correct=$(jq -nr --arg final "$final" --argjson assignment "$assignment" '$assignment.ground_truth | any(. as $location | $final | contains($location))')
+	correct=$(jq -nr --arg final "$final" --argjson acceptance "$acceptance" '
+		($final | [scan("LOCATION[[:space:]]+(?<path>[^[:space:]:]+):(?<line>[0-9]+)")] | last) as $reported |
+		if $reported == null then false else $acceptance.accepted | any(.path == $reported.path and (.line_min <= ($reported.line|tonumber)) and (.line_max >= ($reported.line|tonumber))) end')
 	signpost_correct=false
 	if [[ $shown == true && $adopted == true && $correct == true ]]; then
 		signpost_correct=true
@@ -99,6 +103,8 @@ while IFS= read -r assignment; do
 	model=$(jq -r .model_family <<<"$assignment")
 	condition=$(jq -r .condition <<<"$assignment")
 	query=$(jq -r .query <<<"$assignment")
+	task_id=$(jq -r .task_id <<<"$assignment")
+	acceptance=$(jq -cs --arg task "$task_id" '[.[] | select(.task_id==$task)] | if length == 1 then .[0] else error("acceptance set missing or duplicated for " + $task) end' "$acceptance_sets") || exit 3
 	repo_slug=$(jq -r .repo <<<"$assignment")
 	repo=${repo_slug##*/}
 	revision=$(jq -r .revision <<<"$assignment")
@@ -113,6 +119,7 @@ while IFS= read -r assignment; do
 	: > "$events"
 	prompt=$(prompt_for "$query" "$condition")
 	hook_cmd=$(printf 'env DP_SIGNPOST_CONDITION=%q DP_SIGNPOST_TASK_ID=%q DP_SIGNPOST_MODEL_FAMILY=%q DP_SIGNPOST_REPO=%q DP_SIGNPOST_LOG=%q DP_SIGNPOST_BOBBIN_URL=%q DP_SIGNPOST_TIMEOUT_MS=%q %q signpost' "$condition" "$(jq -r .task_id <<<"$assignment")" "$model" "$repo" "$events" "$bobbin_server/search" "$signpost_timeout_ms" "$dp_bin")
+	prefetch_cmd=$(printf 'env DP_SIGNPOST_REPO=%q DP_SIGNPOST_BOBBIN_URL=%q %q signpost-prefetch' "$repo" "$bobbin_server/search" "$dp_bin")
 
 	env_args=(env "DP_EVAL_BOBBIN_BIN=$bobbin_bin" "DP_EVAL_BOBBIN_SERVER=$bobbin_server" "DP_EVAL_REPO=$repo")
 	if [[ $condition == replacement ]]; then
@@ -123,11 +130,12 @@ while IFS= read -r assignment; do
 		args=(codex exec --ephemeral --ignore-user-config --ignore-rules --sandbox read-only --json -C "$repo_dir")
 		if [[ $condition == always-signpost || $condition == gated-signpost ]]; then
 			escaped=${hook_cmd//\/\\}; escaped=${escaped//\"/\\\"}
-			args+=(--dangerously-bypass-hook-trust -c "hooks.PostToolUse=[{matcher=\"Bash\",hooks=[{type=\"command\",command=\"$escaped\"}]}]")
+			pre_escaped=${prefetch_cmd//\/\\}; pre_escaped=${pre_escaped//\"/\\\"}
+			args+=(--dangerously-bypass-hook-trust -c "hooks.PreToolUse=[{matcher=\"Bash\",hooks=[{type=\"command\",command=\"$pre_escaped\"}]}]" -c "hooks.PostToolUse=[{matcher=\"Bash\",hooks=[{type=\"command\",command=\"$escaped\"}]}]")
 		fi
 		"${env_args[@]}" "${args[@]}" "$prompt" < /dev/null > "$raw" || status=$?
 	else
-		jq -n --arg command "$hook_cmd" '{hooks:{PostToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$command,timeout:5}]}]}}' > "$settings"
+		jq -n --arg pre "$prefetch_cmd" --arg post "$hook_cmd" '{hooks:{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$pre,timeout:5}]}],PostToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$post,timeout:5}]}]}}' > "$settings"
 		args=(claude -p --no-session-persistence --permission-mode dontAsk --tools Bash --disable-slash-commands --setting-sources '' --output-format stream-json --verbose)
 		if [[ $condition == always-signpost || $condition == gated-signpost ]]; then
 			args+=(--settings "$settings")
@@ -139,7 +147,7 @@ while IFS= read -r assignment; do
 		mv "$raw" "$raw.failed"
 		continue
 	fi
-	score_one "$assignment" "$raw" "$events" "$model" "$condition" >> "$results"
+	score_one "$assignment" "$acceptance" "$raw" "$events" "$model" "$condition" >> "$results"
 	completed=$((completed + 1))
 	printf '%s: completed %s/%s (%d new)\n' "$id" "$model" "$condition" "$completed" >&2
 done < "$assignments"

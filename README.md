@@ -33,10 +33,11 @@ of that command is **adoption**. The null/high-cardinality condition is the
 **gating predicate**. **Contract preservation** means the original command's
 stdout and exit status remain byte-identical to the un-intercepted baseline.
 
-The mode is a sibling to hallucination capture: it observes completed
-Bash-mediated `grep` and `rg` calls through PostToolUse and never shadows either
-binary. Native agent Grep/Glob tools are outside v1. Semantic timeouts and
-errors are dropped, leaving baseline behavior unchanged. See
+The mode is a sibling to hallucination capture: a Bash-scoped PreToolUse hook
+launches detached, repo-scoped semantic prefetch for `grep` and `rg`, and the
+PostToolUse sibling consumes only completed warm results. Neither hook shadows
+either binary. Native agent Grep/Glob tools are outside v1. Semantic timeouts
+and errors are dropped, leaving baseline behavior unchanged. See
 [`docs/plans/009-signposting-eval.md`](docs/plans/009-signposting-eval.md) for
 the eval-first event contract.
 

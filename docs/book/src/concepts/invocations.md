@@ -4,9 +4,11 @@
 
 ## Signposting sibling mode
 
-Signposting preserves a deterministic search exactly, then uses a PostToolUse
-hook to offer a pointer to semantic search only when the literal result is empty
-or too large. A signpost is a runnable command, not a replacement result set.
+Signposting preserves a deterministic search exactly. A PreToolUse sibling may
+start a detached semantic prefetch, while PostToolUse offers its pointer only
+when the literal result is empty or too large and a warm result is available
+inside the production budget. A signpost is a runnable command, not a
+replacement result set.
 Following that command is adoption. Hook timeouts and failures are dropped, so
 the unmodified search remains the worst-case behavior.
 

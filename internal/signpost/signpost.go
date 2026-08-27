@@ -4,6 +4,7 @@ package signpost
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,6 +27,7 @@ type Config struct {
 	TaskID    string
 	Model     string
 	Repo      string
+	CacheDir  string
 }
 
 // Event is the stable JSONL contract consumed by the evaluation harness.
@@ -46,6 +48,7 @@ type Event struct {
 	SignpostShown          bool      `json:"signpost_shown"`
 	SemanticCandidateCount int       `json:"semantic_candidate_count"`
 	SemanticLatencyMS      int64     `json:"semantic_latency_ms"`
+	WarmCacheHit           bool      `json:"warm_cache_hit"`
 	Adopted                *bool     `json:"adopted"`
 	TurnsToLocate          *int      `json:"turns_to_locate"`
 	TokensToResolution     *int      `json:"tokens_to_resolution"`
@@ -54,10 +57,15 @@ type Event struct {
 
 type payload struct {
 	SessionID    string          `json:"session_id"`
+	ToolUseID    string          `json:"tool_use_id"`
 	ToolName     string          `json:"tool_name"`
 	ToolInput    json.RawMessage `json:"tool_input"`
 	ToolResponse json.RawMessage `json:"tool_response"`
 	CWD          string          `json:"cwd"`
+}
+
+type cachedResult struct {
+	Count int `json:"count"`
 }
 
 type hookOutput struct {
@@ -106,8 +114,12 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	}
 
 	started := time.Now()
-	count, err := search(ctx, query)
+	count, hit, err := warmResult(ctx, cfg.CacheDir, CacheKey(cfg.Repo, query))
+	if !hit && cfg.CacheDir == "" {
+		count, err = search(ctx, query)
+	}
 	e.SemanticLatencyMS = time.Since(started).Milliseconds()
+	e.WarmCacheHit = hit
 	if err != nil || count == 0 {
 		return nil, e, nil
 	}
@@ -122,6 +134,98 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	out.HookSpecificOutput.AdditionalContext = fmt.Sprintf("Signpost (%s): literal search returned %d line(s). Try semantic search: %s", predicate, cardinality, command)
 	b, err := json.Marshal(out)
 	return b, e, err
+}
+
+// PrefetchRequest extracts the stable join key and semantic query from a
+// PreToolUse payload. It performs no search and never changes hook behavior.
+func PrefetchRequest(raw []byte) (string, string, bool) {
+	var p payload
+	if json.Unmarshal(raw, &p) != nil || p.ToolName != "Bash" || p.ToolUseID == "" {
+		return "", "", false
+	}
+	var input struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(p.ToolInput, &input) != nil {
+		return "", "", false
+	}
+	_, query, ok := literalQuery(input.Command)
+	return p.ToolUseID, query, ok && query != ""
+}
+
+// CacheKey identifies reusable semantic work without coupling it to one hook
+// invocation. Repo scoping prevents same-text queries crossing corpora.
+func CacheKey(repo, query string) string {
+	sum := sha256.Sum256([]byte(repo + "\x00" + query))
+	return fmt.Sprintf("%x", sum[:16])
+}
+
+// WriteWarmResult atomically publishes a speculative result for PostToolUse.
+func WriteWarmResult(dir, id string, count int) error {
+	if dir == "" || id == "" {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(cachedResult{Count: count})
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".warm-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err = tmp.Chmod(0o600); err == nil {
+		_, err = tmp.Write(b)
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(name, warmPath(dir, id))
+}
+
+func warmResult(ctx context.Context, dir, id string) (int, bool, error) {
+	if dir == "" || id == "" {
+		return 0, false, nil
+	}
+	path := warmPath(dir, id)
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		b, err := os.ReadFile(path)
+		if err == nil {
+			_ = os.Remove(path)
+			var result cachedResult
+			if json.Unmarshal(b, &result) == nil {
+				return result.Count, true, nil
+			}
+			return 0, false, nil
+		}
+		if !os.IsNotExist(err) {
+			return 0, false, err
+		}
+		select {
+		case <-ctx.Done():
+			return 0, false, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func warmPath(dir, id string) string {
+	safe := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, id)
+	return filepath.Join(dir, safe+".json")
 }
 
 // HTTPSearcher builds a latency-bounded Bobbin search function.
@@ -183,7 +287,7 @@ func AppendEvent(path string, event Event) error {
 }
 
 func literalQuery(command string) (string, string, bool) {
-	fields := strings.Fields(command)
+	fields := shellFields(command)
 	for i, field := range fields {
 		base := filepath.Base(strings.Trim(field, "'\""))
 		if base != "grep" && base != "rg" {
@@ -198,6 +302,49 @@ func literalQuery(command string) (string, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+func shellFields(command string) []string {
+	var fields []string
+	var b strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if b.Len() > 0 {
+			fields = append(fields, b.String())
+			b.Reset()
+		}
+	}
+	for _, r := range command {
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				b.WriteRune(r)
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if r == ' ' || r == '\t' || r == '\n' {
+			flush()
+			continue
+		}
+		b.WriteRune(r)
+	}
+	flush()
+	return fields
 }
 
 func responseText(raw json.RawMessage) string {

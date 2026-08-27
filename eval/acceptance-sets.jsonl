@@ -1,0 +1,7 @@
+{"task_id":"dp-strong-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/signpost/signpost.go","line_min":65,"line_max":125}]}
+{"task_id":"dp-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/signpost/signpost.go","line_min":90,"line_max":130}]}
+{"task_id":"dp-misleading-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/signpost/signpost.go","line_min":65,"line_max":130},{"path":"internal/source/claudecode.go","line_min":165,"line_max":225}]}
+{"task_id":"gt-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/cmd/escalate.go","line_min":20,"line_max":70},{"path":"internal/cmd/escalate_impl.go","line_min":1,"line_max":80},{"path":"internal/cmd/escalate_impl.go","line_min":730,"line_max":800}]}
+{"task_id":"beads-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/storage/dolt/circuit.go","line_min":60,"line_max":120},{"path":"internal/storage/dolt/circuit.go","line_min":140,"line_max":190},{"path":"internal/storage/dolt/circuit.go","line_min":220,"line_max":275}]}
+{"task_id":"cobra-misleading-001","adjudicated_before_campaign":true,"accepted":[{"path":"command.go","line_min":1120,"line_max":1200}]}
+{"task_id":"ripgrep-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"crates/core/main.rs","line_min":150,"line_max":215},{"path":"crates/ignore/src/walk.rs","line_min":660,"line_max":750}]}

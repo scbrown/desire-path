@@ -6,13 +6,16 @@ Status: implementation contract; first production-budget pilot completed
 
 ## Invariants
 
-Signposting runs only after the deterministic search has completed. It never
-executes, wraps, shadows, or rewrites that search. Therefore the search's stdout
-and exit status remain byte-identical to an installation without signposting.
+Signposting may speculatively prefetch semantic metadata before the deterministic
+search, but it never executes, wraps, shadows, delays, or rewrites that search.
+Only PostToolUse can emit context, after the search has completed. Therefore the
+search's stdout and exit status remain byte-identical to an installation without
+signposting.
 Hook failure, timeout, malformed input, and Bobbin failure all produce no hook
 output and exit successfully: worst case equals the baseline.
 
-V1 observes Bash-mediated `grep` and `rg` commands through a `PostToolUse` hook.
+V1 observes Bash-mediated `grep` and `rg` commands through paired `PreToolUse`
+prefetch and `PostToolUse` gating hooks.
 Claude Code's native Grep and Glob tools are explicitly outside the experiment.
 
 ## Conditions
@@ -100,6 +103,7 @@ out at its declared revision:
 
 ```bash
 eval/run-campaign.sh --assignments assignments.jsonl \
+  --acceptance-sets eval/acceptance-sets.jsonl \
   --corpus-root /path/to/pinned-corpora --artifacts /path/to/artifacts \
   --dp /path/to/dp --bobbin-server http://localhost:3000
 ```
@@ -115,3 +119,8 @@ CLI 0.147.0 was live-probed before adding the cross-family arm: its native
 run may raise it, but its results must be reported separately; otherwise a slow
 semantic service is silently converted from an observed limitation into a
 different intervention.
+
+Correctness is scored only against `eval/acceptance-sets.jsonl`. Each task has
+pre-adjudicated path/line intervals withheld from model prompts and committed
+before campaign output exists. The runner refuses a missing or duplicated set;
+campaign results never rewrite acceptance data.
