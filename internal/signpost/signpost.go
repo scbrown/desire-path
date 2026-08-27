@@ -114,8 +114,8 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	}
 
 	started := time.Now()
-	count, hit, err := warmResult(ctx, cfg.CacheDir, CacheKey(cfg.Repo, query))
-	if !hit && cfg.CacheDir == "" {
+	count, hit, err := warmResult(cfg.CacheDir, CacheKey(cfg.Repo, query))
+	if !hit {
 		count, err = search(ctx, query)
 	}
 	e.SemanticLatencyMS = time.Since(started).Milliseconds()
@@ -190,32 +190,24 @@ func WriteWarmResult(dir, id string, count int) error {
 	return os.Rename(name, warmPath(dir, id))
 }
 
-func warmResult(ctx context.Context, dir, id string) (int, bool, error) {
+func warmResult(dir, id string) (int, bool, error) {
 	if dir == "" || id == "" {
 		return 0, false, nil
 	}
 	path := warmPath(dir, id)
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		b, err := os.ReadFile(path)
-		if err == nil {
-			_ = os.Remove(path)
-			var result cachedResult
-			if json.Unmarshal(b, &result) == nil {
-				return result.Count, true, nil
-			}
-			return 0, false, nil
-		}
-		if !os.IsNotExist(err) {
-			return 0, false, err
-		}
-		select {
-		case <-ctx.Done():
-			return 0, false, ctx.Err()
-		case <-ticker.C:
-		}
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 0, false, nil
 	}
+	if err != nil {
+		return 0, false, err
+	}
+	_ = os.Remove(path)
+	var result cachedResult
+	if json.Unmarshal(b, &result) == nil {
+		return result.Count, true, nil
+	}
+	return 0, false, nil
 }
 
 func warmPath(dir, id string) string {

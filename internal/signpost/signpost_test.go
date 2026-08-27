@@ -96,7 +96,10 @@ func TestWarmMissDropsAtContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 	post := []byte(`{"tool_use_id":"missing","tool_name":"Bash","tool_input":{"command":"rg absent ."},"tool_response":""}`)
-	out, event, err := Process(ctx, post, Config{Threshold: 2, Condition: "gated-signpost", CacheDir: t.TempDir()}, nil)
+	out, event, err := Process(ctx, post, Config{Threshold: 2, Condition: "gated-signpost", CacheDir: t.TempDir()}, func(ctx context.Context, _ string) (int, error) {
+		<-ctx.Done()
+		return 0, ctx.Err()
+	})
 	if err != nil || len(out) != 0 || event.SignpostShown || event.WarmCacheHit {
 		t.Fatalf("out=%q event=%+v err=%v", out, event, err)
 	}
