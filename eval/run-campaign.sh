@@ -67,15 +67,15 @@ score_one() {
 	local assignment=$1 acceptance=$2 raw=$3 events=$4 model=$5 condition=$6
 	local final turns tokens adopted shown correct signpost_correct
 	if [[ $model == codex ]]; then
-		final=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="agent_message") | .item.text] | last // ""' "$raw")
-		turns=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="command_execution")] | length' "$raw")
-		tokens=$(jq -rs '[.[] | select(.type=="turn.completed") | (.usage.input_tokens + .usage.output_tokens)] | add // 0' "$raw")
-		adopted=$(jq -rs 'any(.[]; .type=="item.completed" and .item.type=="command_execution" and ((.item.command // "") | test("(^|[[:space:]])bobbin[[:space:]]+search")))' "$raw")
+		final=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="agent_message") | .item.text] | last // ""' "$raw") || return
+		turns=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="command_execution")] | length' "$raw") || return
+		tokens=$(jq -rs '[.[] | select(.type=="turn.completed") | (.usage.input_tokens + .usage.output_tokens)] | add // 0' "$raw") || return
+		adopted=$(jq -rs 'any(.[]; .type=="item.completed" and .item.type=="command_execution" and ((.item.command // "") | test("(^|[[:space:]])bobbin[[:space:]]+search")))' "$raw") || return
 	else
-		final=$(jq -rs '[.[] | select(.type=="result") | .result] | last // ""' "$raw")
-		turns=$(jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash")] | length' "$raw")
-		tokens=$(jq -rs '[.[] | select(.type=="result") | (.usage.input_tokens + .usage.cache_creation_input_tokens + .usage.cache_read_input_tokens + .usage.output_tokens)] | add // 0' "$raw")
-		adopted=$(jq -rs 'any(.[]; .type=="assistant" and any(.message.content[]?; .type=="tool_use" and .name=="Bash" and ((.input.command // "") | test("(^|[[:space:]])bobbin[[:space:]]+search"))))' "$raw")
+		final=$(jq -rs '[.[] | select(.type=="result") | .result] | last // ""' "$raw") || return
+		turns=$(jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash")] | length' "$raw") || return
+		tokens=$(jq -rs '[.[] | select(.type=="result") | (.usage.input_tokens + .usage.cache_creation_input_tokens + .usage.cache_read_input_tokens + .usage.output_tokens)] | add // 0' "$raw") || return
+		adopted=$(jq -rs 'any(.[]; .type=="assistant" and any(.message.content[]?; .type=="tool_use" and .name=="Bash" and ((.input.command // "") | test("(^|[[:space:]])bobbin[[:space:]]+search"))))' "$raw") || return
 	fi
 	shown=false
 	if [[ -s $events ]]; then
@@ -83,14 +83,14 @@ score_one() {
 	fi
 	correct=$(jq -nr --arg final "$final" --argjson acceptance "$acceptance" '
 		(try ($final | capture("LOCATION[[:space:]]+(?<path>[^[:space:]:]+):(?<line>[0-9]+)")) catch null) as $reported |
-		if $reported == null then false else $acceptance.accepted | any(.path == $reported.path and (.line_min <= ($reported.line|tonumber)) and (.line_max >= ($reported.line|tonumber))) end')
+		if $reported == null then false else $acceptance.accepted | any(.path == $reported.path and (.line_min <= ($reported.line|tonumber)) and (.line_max >= ($reported.line|tonumber))) end') || return
 	signpost_correct=false
 	if [[ $shown == true && $adopted == true && $correct == true ]]; then
 		signpost_correct=true
 	fi
 	jq -nc --argjson assignment "$assignment" --argjson shown "$shown" --argjson adopted "$adopted" \
 		--argjson correct "$correct" --argjson spcorrect "$signpost_correct" --argjson turns "$turns" --argjson tokens "$tokens" \
-		'{assignment_id:$assignment.assignment_id,model_family:$assignment.model_family,condition:$assignment.condition,signpost_shown:$shown,adopted:$adopted,correct:$correct,signpost_correct:$spcorrect,turns_to_locate:$turns,tokens_to_resolution:$tokens}'
+		'{assignment_id:$assignment.assignment_id,model_family:$assignment.model_family,condition:$assignment.condition,signpost_shown:$shown,adopted:$adopted,correct:$correct,signpost_correct:$spcorrect,turns_to_locate:$turns,tokens_to_resolution:$tokens}' || return
 }
 
 completed=0
@@ -147,7 +147,11 @@ while IFS= read -r assignment; do
 		mv "$raw" "$raw.failed"
 		continue
 	fi
-	score_one "$assignment" "$acceptance" "$raw" "$events" "$model" "$condition" >> "$results"
+	if ! score_one "$assignment" "$acceptance" "$raw" "$events" "$model" "$condition" >> "$results"; then
+		printf '%s: scoring failed for %s/%s\n' "$id" "$model" "$condition" >&2
+		mv "$raw" "$raw.failed"
+		continue
+	fi
 	completed=$((completed + 1))
 	printf '%s: completed %s/%s (%d new)\n' "$id" "$model" "$condition" "$completed" >&2
 done < "$assignments"
