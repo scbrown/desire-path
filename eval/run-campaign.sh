@@ -82,7 +82,7 @@ score_one() {
 		shown=$(jq -s 'any(.[]; .signpost_shown == true)' "$events")
 	fi
 	correct=$(jq -nr --arg final "$final" --argjson acceptance "$acceptance" '
-		($final | [scan("LOCATION[[:space:]]+(?<path>[^[:space:]:]+):(?<line>[0-9]+)")] | last) as $reported |
+		(try ($final | capture("LOCATION[[:space:]]+(?<path>[^[:space:]:]+):(?<line>[0-9]+)")) catch null) as $reported |
 		if $reported == null then false else $acceptance.accepted | any(.path == $reported.path and (.line_min <= ($reported.line|tonumber)) and (.line_max >= ($reported.line|tonumber))) end')
 	signpost_correct=false
 	if [[ $shown == true && $adopted == true && $correct == true ]]; then
