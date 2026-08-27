@@ -35,6 +35,9 @@ func signpostCacheDir() string {
 }
 
 func runSignpostPrefetch(_ *cobra.Command, _ []string) error {
+	if os.Getenv("DP_SIGNPOST_PREFETCH") == "0" {
+		return nil
+	}
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return nil

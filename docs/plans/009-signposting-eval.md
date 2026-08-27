@@ -124,3 +124,8 @@ Correctness is scored only against `eval/acceptance-sets.jsonl`. Each task has
 pre-adjudicated path/line intervals withheld from model prompts and committed
 before campaign output exists. The runner refuses a missing or duplicated set;
 campaign results never rewrite acceptance data.
+
+When `DP_SIGNPOST_PREFETCH=0`, PreToolUse stays a silent no-op and PostToolUse
+queries the configured already-warm local server directly. This avoids issuing
+duplicate semantic requests when model startup has already been amortized by a
+resident local Bobbin process; timeout-and-drop remains 150 ms.
