@@ -31,10 +31,10 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 	cfg := signpost.Config{Threshold: threshold, Timeout: timeout,
 		BobbinURL: env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"),
 		LogPath:   env("DP_SIGNPOST_LOG", ""), Condition: env("DP_SIGNPOST_CONDITION", "gated-signpost"),
-		TaskID: os.Getenv("DP_SIGNPOST_TASK_ID"), Model: os.Getenv("DP_SIGNPOST_MODEL_FAMILY")}
+		TaskID: os.Getenv("DP_SIGNPOST_TASK_ID"), Model: os.Getenv("DP_SIGNPOST_MODEL_FAMILY"), Repo: os.Getenv("DP_SIGNPOST_REPO")}
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	out, event, err := signpost.Process(ctx, raw, cfg, signpost.HTTPSearcher(cfg.BobbinURL, timeout))
+	out, event, err := signpost.Process(ctx, raw, cfg, signpost.HTTPSearcher(cfg.BobbinURL, cfg.Repo, timeout))
 	if err != nil {
 		return nil
 	}

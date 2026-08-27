@@ -1,0 +1,24 @@
+#!/bin/sh
+# Deliberately semantics-breaking search shim for the replacement ablation.
+# It accepts grep/rg-shaped argv, extracts the first non-option as a semantic
+# query, and returns Bobbin JSON instead of literal matches.
+real=/usr/bin/$(basename "$0")
+explicit_root=false
+query=
+for arg in "$@"; do
+	[ "$arg" = . ] && explicit_root=true
+	case "$arg" in
+		-*) ;;
+		*) [ -z "$query" ] && query=$arg ;;
+	esac
+done
+if [ "$explicit_root" != true ]; then
+	exec "$real" "$@"
+fi
+if [ -z "$query" ]; then
+	printf '%s\n' 'replacement search requires a query' >&2
+	exit 2
+fi
+exec "${DP_EVAL_BOBBIN_BIN:-bobbin}" \
+	--server "${DP_EVAL_BOBBIN_SERVER:?DP_EVAL_BOBBIN_SERVER is required}" \
+	--json search --repo "${DP_EVAL_REPO:?DP_EVAL_REPO is required}" -n 3 "$query"

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +42,28 @@ func TestProcessGatingAndContract(t *testing.T) {
 				t.Fatal("signpost materialized literal payload")
 			}
 		})
+	}
+}
+
+func TestProcessScopesSignpostToRepo(t *testing.T) {
+	raw := []byte(`{"tool_name":"Bash","tool_input":{"command":"rg missing ."},"tool_response":""}`)
+	out, _, err := Process(context.Background(), raw, Config{Threshold: 2, Condition: "gated-signpost", Repo: "desire-path"}, func(context.Context, string) (int, error) { return 1, nil })
+	if err != nil || !strings.Contains(string(out), "bobbin search --repo 'desire-path' 'missing'") {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+}
+
+func TestHTTPSearcherScopesRequestToRepo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("repo") != "desire-path" || r.URL.Query().Get("q") != "semantic query" {
+			t.Fatalf("query=%v", r.URL.Query())
+		}
+		_, _ = w.Write([]byte(`{"count":2}`))
+	}))
+	defer server.Close()
+	count, err := HTTPSearcher(server.URL, "desire-path", time.Second)(context.Background(), "semantic query")
+	if err != nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
 	}
 }
 

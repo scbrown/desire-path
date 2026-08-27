@@ -1,0 +1,112 @@
+[
+  {
+    "model_family": "claude",
+    "condition": "always-signpost",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.5714285714285714,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 6.857142857142857,
+    "avg_tokens_to_resolution": 225810.57142857142
+  },
+  {
+    "model_family": "claude",
+    "condition": "bare-literal",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.5714285714285714,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 7.142857142857143,
+    "avg_tokens_to_resolution": 206107.2857142857
+  },
+  {
+    "model_family": "claude",
+    "condition": "gated-signpost",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.5714285714285714,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 6.714285714285714,
+    "avg_tokens_to_resolution": 209159.42857142858
+  },
+  {
+    "model_family": "claude",
+    "condition": "prompt-semantic",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.5714285714285714,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 5.285714285714286,
+    "avg_tokens_to_resolution": 204728.42857142858
+  },
+  {
+    "model_family": "claude",
+    "condition": "replacement",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.5714285714285714,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 4.857142857142857,
+    "avg_tokens_to_resolution": 224055.42857142858
+  },
+  {
+    "model_family": "codex",
+    "condition": "always-signpost",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.5714285714285714,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 2.2857142857142856,
+    "avg_tokens_to_resolution": 72556.85714285714
+  },
+  {
+    "model_family": "codex",
+    "condition": "bare-literal",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.42857142857142855,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 2.4285714285714284,
+    "avg_tokens_to_resolution": 78818
+  },
+  {
+    "model_family": "codex",
+    "condition": "gated-signpost",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.42857142857142855,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 2.4285714285714284,
+    "avg_tokens_to_resolution": 76739
+  },
+  {
+    "model_family": "codex",
+    "condition": "prompt-semantic",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.42857142857142855,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 3.5714285714285716,
+    "avg_tokens_to_resolution": 111402
+  },
+  {
+    "model_family": "codex",
+    "condition": "replacement",
+    "runs": 7,
+    "shown": 0,
+    "adoption_rate": 0,
+    "correctness_rate": 0.42857142857142855,
+    "signpost_precision": 0,
+    "avg_turns_to_locate": 3,
+    "avg_tokens_to_resolution": 87872.28571428571
+  }
+]

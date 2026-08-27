@@ -1,6 +1,8 @@
 # Signposting evaluation and event contract
 
-Status: implementation contract for the private signposting sibling mode.
+Status: implementation contract; first production-budget pilot completed
+2026-08-27 with zero delivered signposts. See
+`docs/book/src/evaluations/2026-08-27-signposting-pilot.md`.
 
 ## Invariants
 
@@ -92,3 +94,24 @@ After adjudication, `dp eval score --results results.jsonl` groups outcomes by
 model family and condition and reports adoption rate, correctness rate,
 signpost precision, and average turns/tokens to resolution. Empty or malformed
 result sets are refused rather than rendered as zero-effect findings.
+
+Run the matrix with the resumable harness after checking every corpus directory
+out at its declared revision:
+
+```bash
+eval/run-campaign.sh --assignments assignments.jsonl \
+  --corpus-root /path/to/pinned-corpora --artifacts /path/to/artifacts \
+  --dp /path/to/dp --bobbin-server http://localhost:3000
+```
+
+The harness restricts both agents to read-only investigation, preserves raw
+JSONL transcripts and hook events per assignment, and appends one scored record
+only after a successful run. Re-running skips recorded assignment IDs. Codex
+CLI 0.147.0 was live-probed before adding the cross-family arm: its native
+`PostToolUse` hook receives the same Bash payload and its
+`hookSpecificOutput.additionalContext` reaches the next model turn.
+
+`--signpost-timeout-ms` defaults to the production 150 ms budget. A sensitivity
+run may raise it, but its results must be reported separately; otherwise a slow
+semantic service is silently converted from an observed limitation into a
+different intervention.

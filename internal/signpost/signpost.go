@@ -25,6 +25,7 @@ type Config struct {
 	Condition string
 	TaskID    string
 	Model     string
+	Repo      string
 }
 
 // Event is the stable JSONL contract consumed by the evaluation harness.
@@ -114,13 +115,17 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	e.SignpostShown = true
 	var out hookOutput
 	out.HookSpecificOutput.HookEventName = "PostToolUse"
-	out.HookSpecificOutput.AdditionalContext = fmt.Sprintf("Signpost (%s): literal search returned %d line(s). Try semantic search: bobbin search %s", predicate, cardinality, shellQuote(query))
+	command := "bobbin search " + shellQuote(query)
+	if cfg.Repo != "" {
+		command = "bobbin search --repo " + shellQuote(cfg.Repo) + " " + shellQuote(query)
+	}
+	out.HookSpecificOutput.AdditionalContext = fmt.Sprintf("Signpost (%s): literal search returned %d line(s). Try semantic search: %s", predicate, cardinality, command)
 	b, err := json.Marshal(out)
 	return b, e, err
 }
 
 // HTTPSearcher builds a latency-bounded Bobbin search function.
-func HTTPSearcher(endpoint string, timeout time.Duration) Searcher {
+func HTTPSearcher(endpoint, repo string, timeout time.Duration) Searcher {
 	client := &http.Client{Timeout: timeout}
 	return func(ctx context.Context, query string) (int, error) {
 		u, err := url.Parse(endpoint)
@@ -130,6 +135,9 @@ func HTTPSearcher(endpoint string, timeout time.Duration) Searcher {
 		q := u.Query()
 		q.Set("q", query)
 		q.Set("limit", "3")
+		if repo != "" {
+			q.Set("repo", repo)
+		}
 		u.RawQuery = q.Encode()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 		if err != nil {
