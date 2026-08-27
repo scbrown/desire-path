@@ -68,3 +68,18 @@ No adoption claim is reported until signpost precision is measured on tasks
 whose semantic query has zero literal-term overlap with the ground-truth symbol.
 Every condition must run the same revision/task/model-family blocks.
 
+## Reproducible campaign plan
+
+Pinned corpora live in `eval/corpora.json`; adjudicated tasks live in
+`eval/tasks.jsonl`. Generate the complete blocked matrix with:
+
+```bash
+dp eval plan --tasks eval/tasks.jsonl \
+  --models codex,claude,gemini --replicates 1 --seed signposting-v1 \
+  > assignments.jsonl
+```
+
+The planner refuses non-SHA revisions, empty ground truth, unknown task classes,
+duplicate task IDs, fewer than three model families, and invalid replicate
+counts. It does not invoke models: execution and outcome adjudication are
+separate, auditable steps, so a generated plan cannot be mistaken for results.

@@ -1,0 +1,7 @@
+[
+  {"repo":"scbrown/gastown","revision":"1a1cc86786836908d9ef6e51eff439e327410673","language":"go"},
+  {"repo":"steveyegge/beads","revision":"2043fb25d24051afbb647fd9316649d1643075a2","language":"go"},
+  {"repo":"scbrown/desire-path","revision":"50adc877a9edc80fa174dce427ad7a2380bde517","language":"go"},
+  {"repo":"spf13/cobra","revision":"adbc8813901bba65827259daa8e22ff94ec1f30e","language":"go"},
+  {"repo":"BurntSushi/ripgrep","revision":"3fce3b5bb0236da2df6d99672afb8a719642eca7","language":"rust"}
+]
