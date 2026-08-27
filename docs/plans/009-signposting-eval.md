@@ -83,3 +83,8 @@ The planner refuses non-SHA revisions, empty ground truth, unknown task classes,
 duplicate task IDs, fewer than three model families, and invalid replicate
 counts. It does not invoke models: execution and outcome adjudication are
 separate, auditable steps, so a generated plan cannot be mistaken for results.
+
+After adjudication, `dp eval score --results results.jsonl` groups outcomes by
+model family and condition and reports adoption rate, correctness rate,
+signpost precision, and average turns/tokens to resolution. Empty or malformed
+result sets are refused rather than rendered as zero-effect findings.
