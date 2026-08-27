@@ -100,7 +100,7 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 		TaskID: cfg.TaskID, ModelFamily: cfg.Model, Condition: cfg.Condition, Tool: tool,
 		Command: input.Command, CWD: p.CWD, Query: query, ResultCardinality: cardinality,
 		Threshold: cfg.Threshold, Predicate: predicate}
-	if predicate == "none" || cfg.Condition == "bare-literal" || cfg.Condition == "prompt-semantic" || cfg.Condition == "replacement" {
+	if (predicate == "none" && cfg.Condition != "always-signpost") || cfg.Condition == "bare-literal" || cfg.Condition == "prompt-semantic" || cfg.Condition == "replacement" {
 		return nil, e, nil
 	}
 

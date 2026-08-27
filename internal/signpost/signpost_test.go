@@ -19,6 +19,7 @@ func TestProcessGatingAndContract(t *testing.T) {
 		{"ordinary stays silent", "a\nb", "gated-signpost", 3, false, "none"},
 		{"null emits", "", "gated-signpost", 2, true, "null"},
 		{"large emits", "a\nb\nc\nd", "gated-signpost", 1, true, "high-cardinality"},
+		{"always emits on ordinary result", "a\nb", "always-signpost", 3, true, "none"},
 		{"bare baseline silent", "", "bare-literal", 2, false, "null"},
 	}
 	for _, tt := range tests {

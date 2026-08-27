@@ -75,14 +75,18 @@ Pinned corpora live in `eval/corpora.json`; adjudicated tasks live in
 
 ```bash
 dp eval plan --tasks eval/tasks.jsonl \
-  --models codex,claude,gemini --replicates 1 --seed signposting-v1 \
+  --models codex,claude --replicates 1 --seed signposting-v1 \
   > assignments.jsonl
 ```
 
 The planner refuses non-SHA revisions, empty ground truth, unknown task classes,
-duplicate task IDs, fewer than three model families, and invalid replicate
+duplicate task IDs, fewer than two model families, and invalid replicate
 counts. It does not invoke models: execution and outcome adjudication are
 separate, auditable steps, so a generated plan cannot be mistaken for results.
+
+The first campaign intentionally covers Codex and Claude only. This supports a
+two-family comparison, not a general claim across model ecosystems; broader
+generality remains future work.
 
 After adjudication, `dp eval score --results results.jsonl` groups outcomes by
 model family and condition and reports adoption rate, correctness rate,

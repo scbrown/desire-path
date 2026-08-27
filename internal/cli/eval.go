@@ -12,7 +12,7 @@ import (
 var evalTasks, evalModels, evalSeed string
 var evalResults string
 var evalReplicates int
-var evalCmd = &cobra.Command{Use: "eval", Short: "Build reproducible signposting evaluation assignments", Long: "Validates immutable ground-truth tasks and emits a deterministic blocked matrix across every task, condition, and model family.", Example: "  dp eval plan --tasks eval/tasks.jsonl --models codex,claude,gemini --seed campaign-1"}
+var evalCmd = &cobra.Command{Use: "eval", Short: "Build reproducible signposting evaluation assignments", Long: "Validates immutable ground-truth tasks and emits a deterministic blocked matrix across every task, condition, and model family.", Example: "  dp eval plan --tasks eval/tasks.jsonl --models codex,claude --seed campaign-1"}
 var evalPlanCmd = &cobra.Command{Use: "plan", Short: "Validate tasks and emit the assignment matrix", RunE: func(cmd *cobra.Command, _ []string) error {
 	f, err := os.Open(evalTasks)
 	if err != nil {
@@ -54,7 +54,7 @@ var evalScoreCmd = &cobra.Command{Use: "score", Short: "Aggregate completed assi
 
 func init() {
 	evalPlanCmd.Flags().StringVar(&evalTasks, "tasks", "eval/tasks.jsonl", "ground-truth task JSONL")
-	evalPlanCmd.Flags().StringVar(&evalModels, "models", "codex,claude,gemini", "comma-separated model families")
+	evalPlanCmd.Flags().StringVar(&evalModels, "models", "codex,claude", "comma-separated model families")
 	evalPlanCmd.Flags().IntVar(&evalReplicates, "replicates", 1, "replicates per task/model/condition")
 	evalPlanCmd.Flags().StringVar(&evalSeed, "seed", "signposting-v1", "deterministic assignment seed")
 	evalScoreCmd.Flags().StringVar(&evalResults, "results", "results.jsonl", "completed assignment result JSONL")

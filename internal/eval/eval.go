@@ -82,8 +82,8 @@ func Validate(t Task) error {
 }
 
 func Matrix(tasks []Task, models []string, replicates int, seed string) ([]Assignment, error) {
-	if len(models) < 3 {
-		return nil, fmt.Errorf("at least three model families are required")
+	if len(models) < 2 {
+		return nil, fmt.Errorf("at least two model families are required")
 	}
 	if replicates < 1 {
 		return nil, fmt.Errorf("replicates must be positive")
