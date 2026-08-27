@@ -246,11 +246,18 @@ func TestClaudeCodeInstall(t *testing.T) {
 			t.Fatalf("parsing %s: %v", event, err)
 		}
 
-		if len(entries) != 1 {
-			t.Fatalf("%s: expected 1 hook entry, got %d", event, len(entries))
+		wantEntries := 1
+		if event == "PostToolUse" {
+			wantEntries = 2
+		}
+		if len(entries) != wantEntries {
+			t.Fatalf("%s: expected %d hook entries, got %d", event, wantEntries, len(entries))
 		}
 		if entries[0].Hooks[0].Command != dpHookCommand {
 			t.Errorf("%s: command = %q, want %q", event, entries[0].Hooks[0].Command, dpHookCommand)
+		}
+		if event == "PostToolUse" && entries[1].Hooks[0].Command != dpSignpostCommand {
+			t.Errorf("%s: signpost command = %q, want %q", event, entries[1].Hooks[0].Command, dpSignpostCommand)
 		}
 	}
 }
@@ -291,8 +298,12 @@ func TestClaudeCodeInstallIdempotent(t *testing.T) {
 			t.Fatalf("parsing %s: %v", event, err)
 		}
 
-		if len(entries) != 1 {
-			t.Fatalf("%s: expected 1 hook entry after double install, got %d", event, len(entries))
+		wantEntries := 1
+		if event == "PostToolUse" {
+			wantEntries = 2
+		}
+		if len(entries) != wantEntries {
+			t.Fatalf("%s: expected %d hook entries after double install, got %d", event, wantEntries, len(entries))
 		}
 	}
 }
@@ -388,16 +399,19 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 		t.Errorf("second entry command = %q, want %q", ptufEntries[1].Hooks[0].Command, dpHookCommand)
 	}
 
-	// PostToolUse should have 1 entry (dp ingest).
+	// PostToolUse has dp ingest plus the Bash-scoped signposting sibling.
 	var ptuEntries []claudeHookEntry
 	if err := json.Unmarshal(hooks["PostToolUse"], &ptuEntries); err != nil {
 		t.Fatalf("parsing PostToolUse: %v", err)
 	}
-	if len(ptuEntries) != 1 {
-		t.Fatalf("PostToolUse: expected 1 hook entry, got %d", len(ptuEntries))
+	if len(ptuEntries) != 2 {
+		t.Fatalf("PostToolUse: expected 2 hook entries, got %d", len(ptuEntries))
 	}
 	if ptuEntries[0].Hooks[0].Command != dpHookCommand {
 		t.Errorf("PostToolUse command = %q, want %q", ptuEntries[0].Hooks[0].Command, dpHookCommand)
+	}
+	if ptuEntries[1].Matcher != "Bash" || ptuEntries[1].Hooks[0].Command != dpSignpostCommand {
+		t.Errorf("PostToolUse signpost entry = %+v", ptuEntries[1])
 	}
 }
 
@@ -483,8 +497,8 @@ func TestClaudeCodeIsInstalledWithLegacyHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IsInstalled() error: %v", err)
 	}
-	if !installed {
-		t.Error("IsInstalled() should be true with legacy dp record hooks")
+	if installed {
+		t.Error("legacy-only hooks must report stale so init can add ingest and signposting")
 	}
 }
 

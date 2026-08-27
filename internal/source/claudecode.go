@@ -143,18 +143,18 @@ func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
 		return false, fmt.Errorf("parse hooks: %w", err)
 	}
 
-	// Check all hook events for any dp command (current or legacy).
-	for _, eventRaw := range hooks {
-		var entries []claudeHookEntry
-		if err := json.Unmarshal(eventRaw, &entries); err != nil {
-			continue
-		}
-		if hasDPHookCommand(entries, dpHookCommand) || hasDPHookCommand(entries, dpLegacyHookCommand) {
-			return true, nil
-		}
+	var postUse, postFailure []claudeHookEntry
+	if raw, ok := hooks["PostToolUse"]; ok {
+		_ = json.Unmarshal(raw, &postUse)
 	}
-
-	return false, nil
+	if raw, ok := hooks["PostToolUseFailure"]; ok {
+		_ = json.Unmarshal(raw, &postFailure)
+	}
+	// A prior dp installation is not current until the sibling signposting
+	// hook is present too; this lets `dp init` converge upgrades.
+	return hasDPHookCommand(postUse, dpHookCommand) &&
+		hasDPHookCommand(postUse, dpSignpostCommand) &&
+		hasDPHookCommand(postFailure, dpHookCommand), nil
 }
 
 // claudeSettings represents the relevant subset of a Claude Code settings file.
@@ -177,14 +177,18 @@ type claudeHookInner struct {
 // dpHookCommand is the canonical command installed for both hook events.
 const dpHookCommand = "dp ingest --source claude-code"
 
+// dpSignpostCommand is a sibling PostToolUse hook. It never wraps the invoked
+// command; it observes completed Bash searches and may emit disjoint context.
+const dpSignpostCommand = "dp signpost"
+
 // dpLegacyHookCommand is the old command that may exist in user settings.
 // IsInstalled checks for both so upgrades are detected correctly.
 const dpLegacyHookCommand = "dp record --source claude-code"
 
 // installClaudeHooks performs the Claude Code setup using the given settings path.
-// It installs a single dp ingest hook for both PostToolUse and PostToolUseFailure
-// events. The dual-write in the ingest pipeline ensures failures appear in both
-// invocations and desires tables.
+// It installs dp ingest for both PostToolUse and PostToolUseFailure, plus the
+// Bash-scoped signposting sibling on PostToolUse. The dual-write in the ingest
+// pipeline ensures failures appear in both invocations and desires tables.
 func installClaudeHooks(settingsPath string) error {
 	settings, err := readClaudeSettings(settingsPath)
 	if err != nil {
@@ -198,11 +202,16 @@ func installClaudeHooks(settingsPath string) error {
 	defs := []hookDef{
 		{"PostToolUse", dpHookCommand},
 		{"PostToolUseFailure", dpHookCommand},
+		{"PostToolUse", dpSignpostCommand},
 	}
 
 	for _, d := range defs {
+		matcher := ".*"
+		if d.command == dpSignpostCommand {
+			matcher = "Bash"
+		}
 		hooks, err := mergeHookEvent(settings, d.event, claudeHookEntry{
-			Matcher: ".*",
+			Matcher: matcher,
 			Hooks: []claudeHookInner{
 				{Type: "command", Command: d.command, Timeout: 5000},
 			},

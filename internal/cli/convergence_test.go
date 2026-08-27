@@ -381,12 +381,19 @@ func TestConvergenceInitInstallsSingleIngestHookForBothEvents(t *testing.T) {
 			t.Fatalf("parsing %s: %v", event, err)
 		}
 
-		if len(entries) != 1 {
-			t.Fatalf("%s: expected 1 hook entry, got %d", event, len(entries))
+		wantEntries := 1
+		if event == "PostToolUse" {
+			wantEntries = 2
+		}
+		if len(entries) != wantEntries {
+			t.Fatalf("%s: expected %d hook entries, got %d", event, wantEntries, len(entries))
 		}
 		cmd := entries[0].Hooks[0].Command
 		if cmd != "dp ingest --source claude-code" {
 			t.Errorf("%s: command = %q, want %q", event, cmd, "dp ingest --source claude-code")
+		}
+		if event == "PostToolUse" && (entries[1].Matcher != "Bash" || entries[1].Hooks[0].Command != "dp signpost") {
+			t.Errorf("PostToolUse signpost entry = %+v", entries[1])
 		}
 	}
 
@@ -442,8 +449,8 @@ func TestConvergenceBackwardCompatLegacyRecordHooksDetected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IsInstalled: %v", err)
 	}
-	if !installed {
-		t.Error("IsInstalled should detect legacy dp record hooks as installed")
+	if installed {
+		t.Error("legacy-only hooks must report stale so init can converge the current hook set")
 	}
 }
 

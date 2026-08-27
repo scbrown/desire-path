@@ -19,6 +19,7 @@ internal/        Private packages - not importable by external code.
   ingest/        Raw payload → Invocation conversion and persistence.
   record/        Stdin JSON parsing and desire recording.
   analyze/       Similarity engine for tool name suggestions.
+  signpost/      PostToolUse gating, Bobbin pointer emission, eval JSONL.
   config/        Configuration file (~/.dp/config.toml) management.
   cli/           Cobra command definitions + table formatting.
 docs/plans/      Architecture and design documents.

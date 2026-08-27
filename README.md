@@ -24,6 +24,24 @@ Think of it like [desire paths](https://en.wikipedia.org/wiki/Desire_path) on a 
 
 ---
 
+## Signposting (private sibling mode)
+
+**Signposting** executes a deterministic literal search unmodified and then,
+only when its result is empty or too large, offers a **signpost**: a pointer and
+runnable Bobbin command on the agent hook channel. The agent's subsequent use
+of that command is **adoption**. The null/high-cardinality condition is the
+**gating predicate**. **Contract preservation** means the original command's
+stdout and exit status remain byte-identical to the un-intercepted baseline.
+
+The mode is a sibling to hallucination capture: it observes completed
+Bash-mediated `grep` and `rg` calls through PostToolUse and never shadows either
+binary. Native agent Grep/Glob tools are outside v1. Semantic timeouts and
+errors are dropped, leaving baseline behavior unchanged. See
+[`docs/plans/009-signposting-eval.md`](docs/plans/009-signposting-eval.md) for
+the eval-first event contract.
+
+---
+
 ## 🎬 See It In Action
 
 ```bash

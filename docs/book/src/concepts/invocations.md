@@ -2,6 +2,18 @@
 
 **Invocations** track ALL tool calls, not just failures. When enabled, desire_path becomes a comprehensive telemetry system for AI tool usage.
 
+## Signposting sibling mode
+
+Signposting preserves a deterministic search exactly, then uses a PostToolUse
+hook to offer a pointer to semantic search only when the literal result is empty
+or too large. A signpost is a runnable command, not a replacement result set.
+Following that command is adoption. Hook timeouts and failures are dropped, so
+the unmodified search remains the worst-case behavior.
+
+V1 covers Bash-mediated `grep` and `rg`; native agent Grep/Glob tools are not
+intercepted. The evaluation and event contract lives in
+`docs/plans/009-signposting-eval.md`.
+
 ## The Difference
 
 - **Desires**: Only failed tool calls
