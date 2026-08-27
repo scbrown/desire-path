@@ -52,6 +52,7 @@
 - [Overview](./evaluations/README.md)
 - [2026-03-05 Baseline](./evaluations/2026-03-05-baseline.md)
 - [2026-08-27 Signposting pilot](./evaluations/2026-08-27-signposting-pilot.md)
+- [2026-08-27 Local warm signposting](./evaluations/2026-08-27-local-warm-pilot.md)
 
 ---
 

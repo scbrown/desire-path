@@ -1,0 +1,6 @@
+{
+  "design": {"tasks": 7, "model_families": 2, "conditions": 5, "runs": 70, "acceptance_sets": "eval/acceptance-sets.jsonl", "semantic_budget_ms": 150},
+  "affected_cell_rerun": {"runs": 28, "cells": 4, "runs_per_cell": 7, "failed_artifacts": 0, "eligible_events": 55, "shown_events": 6, "shown_assignments": 3, "shown_latency_p95_ms": 69, "eligible_latency_p95_ms": 150, "adopted_assignments": 0},
+  "composite_outcomes": {"correct": 53, "correct_total": 70, "signpost_correct": 0},
+  "interpretation": "The local warm delivery path cleared the successful-delivery p95 gate and produced model-visible signposts, but coverage was 6 of 55 eligible events and no signpost was adopted. This supports no efficacy claim."
+}
