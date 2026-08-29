@@ -66,7 +66,8 @@ func runSignpostFetch(cmd *cobra.Command, _ []string) error {
 	timeout := time.Duration(envInt("DP_SIGNPOST_PREFETCH_TIMEOUT_MS", 5000)) * time.Millisecond
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	count, err := signpost.HTTPSearcher(env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"), os.Getenv("DP_SIGNPOST_REPO"), timeout)(ctx, fetchQuery)
+	count, err := signpost.HTTPSearcher(env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"),
+		os.Getenv("DP_SIGNPOST_REPO"), searchMode(), timeout)(ctx, fetchQuery)
 	if err == nil {
 		_ = signpost.WriteWarmResult(signpostCacheDir(), fetchID, count)
 	}
@@ -86,7 +87,7 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 		TaskID: os.Getenv("DP_SIGNPOST_TASK_ID"), Model: os.Getenv("DP_SIGNPOST_MODEL_FAMILY"), Repo: os.Getenv("DP_SIGNPOST_REPO"), CacheDir: signpostCacheDir()}
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	out, event, err := signpost.Process(ctx, raw, cfg, signpost.HTTPSearcher(cfg.BobbinURL, cfg.Repo, timeout))
+	out, event, err := signpost.Process(ctx, raw, cfg, signpost.HTTPSearcher(cfg.BobbinURL, cfg.Repo, searchMode(), timeout))
 	if err != nil {
 		return nil
 	}
@@ -98,6 +99,13 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 	}
 	return nil
 }
+
+// searchMode selects the Bobbin search mode the hook asks for. Unset leaves the
+// backend default in place: on a warm resident index the modes are within ~5 ms
+// of each other and return identical candidate counts, so there is no measured
+// case for overriding it. The knob exists so a delivery arm can be pinned and
+// compared, not because a mode has been shown to be better.
+func searchMode() string { return os.Getenv("DP_SIGNPOST_SEARCH_MODE") }
 
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

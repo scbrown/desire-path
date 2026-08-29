@@ -220,8 +220,17 @@ func warmPath(dir, id string) string {
 	return filepath.Join(dir, safe+".json")
 }
 
-// HTTPSearcher builds a latency-bounded Bobbin search function.
-func HTTPSearcher(endpoint, repo string, timeout time.Duration) Searcher {
+// HTTPSearcher builds a latency-bounded Bobbin search function. mode selects
+// the backend's search mode; empty leaves the backend default in place, which
+// is what the hook ships with.
+//
+// The parameter exists so an arm can STATE its mode rather than inherit one.
+// Measured against a warm resident index, 40 distinct workload queries, the two
+// modes interleaved to cancel warm-up: hybrid p50 98 ms, semantic p50 93 ms,
+// identical candidate counts. An earlier unpaired reading of 330 ms vs 106 ms
+// was an ordering artifact of a cold server and is not a reason to change the
+// default.
+func HTTPSearcher(endpoint, repo, mode string, timeout time.Duration) Searcher {
 	client := &http.Client{Timeout: timeout}
 	return func(ctx context.Context, query string) (int, error) {
 		u, err := url.Parse(endpoint)
@@ -233,6 +242,9 @@ func HTTPSearcher(endpoint, repo string, timeout time.Duration) Searcher {
 		q.Set("limit", "3")
 		if repo != "" {
 			q.Set("repo", repo)
+		}
+		if mode != "" {
+			q.Set("mode", mode)
 		}
 		u.RawQuery = q.Encode()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)

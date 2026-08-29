@@ -16,14 +16,18 @@
 #
 # usage:
 #   eval/replay-delivery.sh --dp PATH --bobbin-server URL --out DIR \
-#       [--workload FILE] [--condition always-signpost] \
+#       [--workload FILE] [--condition always-signpost] [--search-mode MODE] \
 #       [--timeout-ms 150] [--prefetch-gap-ms N | --no-prefetch] [--limit N]
+#
+# --search-mode is part of the measurement, not a tuning detail: bobbin's hybrid
+# default runs the keyword pass as well as the vector pass and lands outside the
+# 150 ms contract, so an arm that does not state its mode cannot be compared.
 set -euo pipefail
 
 usage() { sed -n '2,20p' "$0"; exit "${1:-2}"; }
 
 dp_bin=; bobbin_server=; out=; workload=eval/replay-workload.jsonl
-condition=always-signpost; timeout_ms=150; gap_ms=-1; limit=0
+condition=always-signpost; timeout_ms=150; gap_ms=-1; limit=0; search_mode=
 while (($#)); do
 	case $1 in
 	--dp) dp_bin=$2; shift 2 ;;
@@ -31,6 +35,7 @@ while (($#)); do
 	--out) out=$2; shift 2 ;;
 	--workload) workload=$2; shift 2 ;;
 	--condition) condition=$2; shift 2 ;;
+	--search-mode) search_mode=$2; shift 2 ;;
 	--timeout-ms) timeout_ms=$2; shift 2 ;;
 	--prefetch-gap-ms) gap_ms=$2; shift 2 ;;
 	--no-prefetch) gap_ms=-1; shift ;;
@@ -56,6 +61,11 @@ fi
 mkdir -p "$out"
 arm=direct
 ((gap_ms >= 0)) && arm=prefetch-${gap_ms}ms
+[[ -n $search_mode ]] && arm=$arm-$search_mode
+# The condition belongs in the arm name: gated-signpost and always-signpost are
+# different measurements of the same hook, and naming them alike silently
+# overwrites one arm's events with the other's.
+arm=$condition-$arm
 events=$out/events-$arm.jsonl
 : >"$events"
 cache=$out/cache-$arm
@@ -78,10 +88,12 @@ while IFS= read -r row; do
 
 	if ((gap_ms >= 0)); then
 		env DP_SIGNPOST_REPO="$repo" DP_SIGNPOST_BOBBIN_URL="$bobbin_server" \
+			${search_mode:+DP_SIGNPOST_SEARCH_MODE="$search_mode"} \
 			DP_SIGNPOST_CACHE_DIR="$cache" "$dp_bin" signpost-prefetch <<<"$payload" >/dev/null 2>&1 || true
 		sleep "$(awk -v ms="$gap_ms" 'BEGIN { printf "%.3f", ms / 1000 }')"
 	fi
 	env DP_SIGNPOST_CONDITION="$condition" DP_SIGNPOST_REPO="$repo" \
+		${search_mode:+DP_SIGNPOST_SEARCH_MODE="$search_mode"} \
 		DP_SIGNPOST_LOG="$events" DP_SIGNPOST_BOBBIN_URL="$bobbin_server" \
 		DP_SIGNPOST_TIMEOUT_MS="$timeout_ms" DP_SIGNPOST_CACHE_DIR="$cache" \
 		DP_SIGNPOST_PREFETCH=$((gap_ms >= 0 ? 1 : 0)) \
@@ -89,17 +101,32 @@ while IFS= read -r row; do
 done <"$workload"
 
 summary=$out/coverage-$arm.json
-jq -s --arg arm "$arm" --arg condition "$condition" --argjson replayed "$n" \
+jq -s --arg arm "$arm" --arg condition "$condition" --arg search_mode "$search_mode" --argjson replayed "$n" \
 	--argjson timeout_ms "$timeout_ms" --argjson gap_ms "$gap_ms" '
-	{ arm: $arm, condition: $condition, replayed: $replayed,
-	  timeout_ms: $timeout_ms, prefetch_gap_ms: (if $gap_ms < 0 then null else $gap_ms end),
-	  eligible: length,
-	  shown: (map(select(.signpost_shown)) | length),
-	  warm_cache_hits: (map(select(.warm_cache_hit)) | length),
-	  timed_out: (map(select((.signpost_shown | not) and .semantic_latency_ms >= ($timeout_ms - 10))) | length),
-	  zero_candidate: (map(select((.signpost_shown | not) and .semantic_latency_ms < ($timeout_ms - 10))) | length),
-	  coverage: (if length == 0 then null else ((map(select(.signpost_shown)) | length) / length) end),
-	  shown_latency_ms: (map(select(.signpost_shown) | .semantic_latency_ms) | sort) }
+	# `eligible` is the number of events where a semantic lookup was ATTEMPTED —
+	# not the number of rows replayed. Under gated-signpost most rows never reach
+	# the searcher at all, and counting them as eligible-but-empty reports a
+	# delivery failure that never happened: it read 33/185 = 18% for an arm that
+	# delivered 33 of 35, 94%.
+	#
+	# Attempted is derived rather than taken from `predicate`, because the
+	# predicate records the literal-search outcome and always-signpost searches
+	# even when it is "none": keying off the predicate under-counts that arm by
+	# 150 of 185. A lookup leaves one of three marks — a shown signpost, a warm
+	# cache hit, or a nonzero latency; an HTTP round trip cannot register 0 ms.
+	map(select(.signpost_shown or .warm_cache_hit or .semantic_latency_ms > 0)) as $gated |
+	{ arm: $arm, condition: $condition, search_mode: (if $search_mode == "" then null else $search_mode end),
+	  replayed: $replayed, timeout_ms: $timeout_ms,
+	  prefetch_gap_ms: (if $gap_ms < 0 then null else $gap_ms end),
+	  logged: length,
+	  not_gated: (length - ($gated | length)),
+	  eligible: ($gated | length),
+	  shown: ($gated | map(select(.signpost_shown)) | length),
+	  warm_cache_hits: ($gated | map(select(.warm_cache_hit)) | length),
+	  timed_out: ($gated | map(select((.signpost_shown | not) and .semantic_latency_ms >= ($timeout_ms - 10))) | length),
+	  zero_candidate: ($gated | map(select((.signpost_shown | not) and .semantic_latency_ms < ($timeout_ms - 10))) | length),
+	  coverage: (if ($gated | length) == 0 then null else (($gated | map(select(.signpost_shown)) | length) / ($gated | length)) end),
+	  shown_latency_ms: ($gated | map(select(.signpost_shown) | .semantic_latency_ms) | sort) }
 	' "$events" >"$summary"
-jq -c '{arm,eligible,shown,coverage,timed_out,zero_candidate,warm_cache_hits}' "$summary"
+jq -c '{arm,search_mode,logged,not_gated,eligible,shown,coverage,timed_out,zero_candidate,warm_cache_hits}' "$summary"
 printf 'events: %s\nsummary: %s\n' "$events" "$summary" >&2

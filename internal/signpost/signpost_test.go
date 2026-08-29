@@ -61,9 +61,30 @@ func TestHTTPSearcherScopesRequestToRepo(t *testing.T) {
 		_, _ = w.Write([]byte(`{"count":2}`))
 	}))
 	defer server.Close()
-	count, err := HTTPSearcher(server.URL, "desire-path", time.Second)(context.Background(), "semantic query")
+	count, err := HTTPSearcher(server.URL, "desire-path", "", time.Second)(context.Background(), "semantic query")
 	if err != nil || count != 2 {
 		t.Fatalf("count=%d err=%v", count, err)
+	}
+}
+
+// An unset mode must leave the parameter off the request entirely rather than
+// send an empty one, which a backend may read as an unsupported mode: the
+// shipped hook sends no mode at all, so this is the default path.
+func TestHTTPSearcherSendsSearchModeOnlyWhenSet(t *testing.T) {
+	for _, tc := range []struct{ mode, want string }{{"semantic", "semantic"}, {"hybrid", "hybrid"}, {"", ""}} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.URL.Query().Get("mode"); got != tc.want {
+				t.Errorf("mode=%q want %q", got, tc.want)
+			}
+			if tc.mode == "" && r.URL.Query().Has("mode") {
+				t.Errorf("empty mode must not be sent: %v", r.URL.Query())
+			}
+			_, _ = w.Write([]byte(`{"count":1}`))
+		}))
+		if _, err := HTTPSearcher(server.URL, "", tc.mode, time.Second)(context.Background(), "q"); err != nil {
+			t.Fatalf("mode %q: %v", tc.mode, err)
+		}
+		server.Close()
 	}
 }
 
