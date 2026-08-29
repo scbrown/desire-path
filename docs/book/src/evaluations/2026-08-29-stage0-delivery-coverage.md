@@ -69,6 +69,24 @@ Two independent causes, neither of them retrieval quality:
    Against the local index built from the corpora themselves, zero-candidate
    events are 0 of 185.
 
+## The two builds, replayed rather than reasoned about
+
+The campaign's natural experiment paired two builds 15 minutes apart. Reading
+the diff says `9c23bd4` adds only the `DP_SIGNPOST_PREFETCH=0` opt-out, so it
+cannot itself cause a coverage drop — but that is an inference, and the whole
+point of Stage 0 is not to ship one. Both commits were built and replayed
+against the same index, same workload, same conditions:
+
+| build | arm | eligible | shown | coverage |
+|---|---|--:|--:|--:|
+| `276086a` | direct | 35 | 35 | 100% |
+| `276086a` | prefetch 500 ms | 35 | 35 | 100% |
+| `9c23bd4` | direct | 35 | 35 | 100% |
+| `9c23bd4` | prefetch 500 ms | 35 | 35 | 100% |
+
+The builds are indistinguishable at equal environment. The published pairing
+varied the environment, not the code.
+
 ## The honest limit of a coverage number
 
 Coverage says a signpost reached the model. It says nothing about whether the
