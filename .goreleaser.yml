@@ -12,13 +12,20 @@ builds:
     goarch:
       - amd64
       - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/scbrown/desire-path/internal/cli.Version={{ .Version }}
+        -X github.com/scbrown/desire-path/internal/cli.Commit={{ .Commit }}
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
 checksum:
   name_template: "checksums.txt"
