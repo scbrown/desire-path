@@ -54,8 +54,8 @@ func TestInitIdempotent(t *testing.T) {
 	settings := e.readSettingsJSON()
 	hooks := settingsHooks(t, settings)
 
-	assertHookCount(t, hooks, "PostToolUse", 1)
-	assertHookCount(t, hooks, "PostToolUseFailure", 1)
+	assertCommandCount(t, hooks, "PostToolUse", "dp ingest --source claude-code", 1)
+	assertCommandCount(t, hooks, "PostToolUseFailure", "dp ingest --source claude-code", 1)
 }
 
 // TestPaveHookIdempotent verifies running dp pave --hook twice does not
@@ -70,7 +70,7 @@ func TestPaveHookIdempotent(t *testing.T) {
 	settings := e.readSettingsJSON()
 	hooks := settingsHooks(t, settings)
 
-	assertHookCount(t, hooks, "PreToolUse", 1)
+	assertCommandCount(t, hooks, "PreToolUse", "dp pave-check", 1)
 }
 
 // TestBothIdempotent verifies running both commands multiple times in various
@@ -89,9 +89,16 @@ func TestBothIdempotent(t *testing.T) {
 	settings := e.readSettingsJSON()
 	hooks := settingsHooks(t, settings)
 
-	assertHookCount(t, hooks, "PostToolUse", 1)
-	assertHookCount(t, hooks, "PostToolUseFailure", 2) // ingest + pave auto-correct
-	assertHookCount(t, hooks, "PreToolUse", 1)
+	// Every command dp installs, exactly once each — across six interleaved
+	// runs. Naming them individually is the point: the old form asserted the
+	// number of groups, which could not tell "installed twice" from "two
+	// different hooks live here".
+	assertCommandCount(t, hooks, "PostToolUse", "dp ingest --source claude-code", 1)
+	assertCommandCount(t, hooks, "PostToolUse", "dp signpost", 1)
+	assertCommandCount(t, hooks, "PostToolUseFailure", "dp ingest --source claude-code", 1)
+	assertCommandCount(t, hooks, "PostToolUseFailure", "dp pave-correct", 1)
+	assertCommandCount(t, hooks, "PreToolUse", "dp pave-check", 1)
+	assertCommandCount(t, hooks, "PreToolUse", "dp signpost-prefetch", 1)
 }
 
 // TestPreserveUserHooks verifies that existing user-defined hooks are not
@@ -145,9 +152,14 @@ func TestPreserveUserHooks(t *testing.T) {
 	assertHookCommand(t, hooks, "PostToolUseFailure", "dp ingest --source claude-code")
 	assertHookCommand(t, hooks, "PreToolUse", "dp pave-check")
 
-	// PostToolUse should have 2 entries (user + dp), PreToolUse should have 2.
-	assertHookCount(t, hooks, "PostToolUse", 2)
-	assertHookCount(t, hooks, "PreToolUse", 2)
+	// The user's hook survives exactly once — not dropped, and not duplicated
+	// by a second install pass. Asserting the group count instead only ever
+	// tested this by coincidence, and stopped doing so when dp gained a second
+	// hook on each of these events.
+	assertCommandCount(t, hooks, "PostToolUse", "my-custom-logger", 1)
+	assertCommandCount(t, hooks, "PreToolUse", "my-linter", 1)
+	assertCommandCount(t, hooks, "PostToolUse", "dp ingest --source claude-code", 1)
+	assertCommandCount(t, hooks, "PreToolUse", "dp pave-check", 1)
 }
 
 // TestPreserveNonHookSettings verifies that non-hook settings keys are
@@ -164,7 +176,7 @@ func TestPreserveNonHookSettings(t *testing.T) {
 			"MY_VAR":   "hello",
 			"API_MODE": "test",
 		},
-		"model":             "claude-sonnet-4-5-20250929",
+		"model":              "claude-sonnet-4-5-20250929",
 		"customInstructions": "Be helpful and concise.",
 	})
 
@@ -334,6 +346,47 @@ func assertHookCommand(t *testing.T, hooks map[string]json.RawMessage, event, co
 		}
 	}
 	t.Errorf("command %q not found in %s hooks", command, event)
+}
+
+// assertCommandCount verifies how many times one COMMAND appears under an
+// event — which is what "idempotent" and "not clobbered" actually mean here.
+//
+// assertHookCount below counts hook ENTRY GROUPS, and the idempotence tests
+// used to assert on that. It held only while dp installed exactly one hook per
+// event, and it stopped holding the moment a genuinely new one was added:
+// e6ddd92 gave `init` a `dp signpost` PostToolUse hook and a
+// `dp signpost-prefetch` PreToolUse hook, and four tests went red reporting
+// "count = 2, want 1" — a correct count of the wrong thing. Nothing was
+// duplicated; there were simply two distinct hooks where the fixture expected
+// one.
+//
+// Counting a command makes the assertion say what the test name says, and
+// makes it survive the next hook.
+func assertCommandCount(t *testing.T, hooks map[string]json.RawMessage, event, command string, want int) {
+	t.Helper()
+	raw, ok := hooks[event]
+	if !ok {
+		if want == 0 {
+			return
+		}
+		t.Errorf("hook event %q not found (want %d occurrences of %q)", event, want, command)
+		return
+	}
+	var entries []hookEntry
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("parse %s entries: %v", event, err)
+	}
+	got := 0
+	for _, e := range entries {
+		for _, h := range e.Hooks {
+			if h.Command == command {
+				got++
+			}
+		}
+	}
+	if got != want {
+		t.Errorf("%s: command %q appears %d time(s), want %d", event, command, got, want)
+	}
 }
 
 // assertHookCount verifies the number of hook entries for a given event.
