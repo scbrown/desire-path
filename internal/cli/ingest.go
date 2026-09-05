@@ -7,11 +7,14 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/ingest"
+	"github.com/scbrown/desire-path/internal/metrics"
 	"github.com/scbrown/desire-path/internal/model"
 	"github.com/scbrown/desire-path/internal/source"
+	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -64,6 +67,7 @@ Use "dp ingest --source <name>" with data piped to stdin.`,
 // plugin, check track_tools allowlist, and persist the invocation. Returns
 // nil invocation (and nil error) when the tool is filtered by the allowlist.
 func doIngest(sourceName string) (*model.Invocation, error) {
+	started := time.Now()
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, fmt.Errorf("reading stdin: %w", err)
@@ -101,10 +105,47 @@ func doIngest(sourceName string) (*model.Invocation, error) {
 
 	inv, err := ingest.IngestFields(context.Background(), s, fields, sourceName)
 	if err != nil {
+		reportMetrics(s, sourceName, started, 1)
 		return nil, err
 	}
 
+	// FUNCTIONAL COUNTERS (aegis-lu5502). Pushed, because `dp ingest` runs once
+	// per tool call and exits — there is nothing alive to scrape. What is pushed
+	// is the STORE's own totals, not a per-run count: a Pushgateway replaces a
+	// job's samples, so "I did 1 ingest" would sit at a flat 1 forever however
+	// much work happened. Store totals move with the work, and they are the
+	// numbers `dp stats` already reports. Never fatal — see internal/metrics.
+	reportMetrics(s, sourceName, started, 0)
+
 	return &inv, nil
+}
+
+// reportMetrics pushes the store's totals and this run's liveness. It swallows
+// everything: an ingest must not fail because a metrics gateway is unreachable,
+// unauthenticated or unconfigured.
+func reportMetrics(s store.Store, sourceName string, started time.Time, status int) {
+	var samples []metrics.Sample
+	if status == 0 {
+		st, err := s.Stats(context.Background())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "metrics: store totals unavailable (%v) — producer group still pushed\n", err)
+			status = 0 // the INGEST succeeded; only the reading failed
+		} else {
+			// NO source label: store.Stats is an unfiltered COUNT over the whole
+			// `desires` table, so these are GLOBAL totals. Labelling a global
+			// number with whichever source happened to trigger the push made it
+			// read as per-source AND destroyed the previous source's series on
+			// every push (measured, aegis-lu5502). Per-source counts already
+			// exist as st.TopSources if we ever want them.
+			samples = []metrics.Sample{
+				{Name: "desire_path_desires_total", Value: float64(st.TotalDesires)},
+				{Name: "desire_path_unique_paths", Value: float64(st.UniquePaths)},
+				{Name: "desire_path_desires_last_24h", Value: float64(st.Last24h)},
+				{Name: "desire_path_desires_last_7d", Value: float64(st.Last7d)},
+			}
+		}
+	}
+	metrics.Report(os.Stderr, sourceName, samples, started, status)
 }
 
 func init() {
