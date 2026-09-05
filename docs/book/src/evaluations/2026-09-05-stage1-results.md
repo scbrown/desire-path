@@ -106,6 +106,36 @@ settings file carrying the Bash allow, with hooks added only where the arm calls
 for them. The contaminated rows were deleted and re-run rather than analysed; the
 151 clean rows were kept, because nothing was denied in them.
 
+## Decisions taken on this evidence
+
+Both are deliberate choices with reasons, not defaults that happened.
+
+**Payload mode is NOT rolled out to the fleet.** It is adopted and inert: 65%
+uptake buying one task out of forty. Rolling it out would pay a stack query on
+every eligible search, on every pane, forever, for a return this campaign
+measured as noise. Production stays on the pointer mode already installed —
+cheap, delivered, and never taken. Recording that as a decision matters: "we left
+it on pointers" would otherwise read as inertia, when it is a choice made against
+a number.
+
+**Widening the intent families further is dropped.** Two families beyond the
+original were built and certified for delivery — `symbol-search`, which is 18% of
+recorded searches and answers at p50 11 ms against 79-93 ms, and `file-find` at
+15/15 — and a third, `history-search`, is implemented but uncertified.
+
+Certifying it would be work in service of a hypothesis this campaign has already
+answered. **Widening changes WHICH searches are eligible for a signpost; it does
+not change what an agent does with one.** The pointer arm was adopted 0 times out
+of 53 across three families, and the payload arm's 65% uptake moved correctness
+by a single task. A fourth family multiplies the denominator of an intervention
+whose numerator is the problem. That is why it is dropped rather than deferred:
+deferring implies the evidence might change, and the evidence that would change
+it is not a family count.
+
+What the family work does leave behind is worth keeping: the structural route is
+eight times faster than semantic search on the same query, which is a fact about
+the stack rather than about signposting, and it is measured and recorded.
+
 ## Limits, stated rather than found later
 
 - **n = 53 model-visible signposts, against a preregistered target of 60.** The
