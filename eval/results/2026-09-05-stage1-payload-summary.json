@@ -1,0 +1,65 @@
+{
+  "runs": 40,
+  "model_visible_signposts": 40,
+  "cells": [
+    {
+      "model_family": "claude",
+      "condition": "payload-signpost",
+      "adoption_kind": "used-injected-location",
+      "runs": 20,
+      "shown": 20,
+      "adoption_rate": 0.65,
+      "ran_stack_command": 0,
+      "used_injected_location": 13,
+      "correctness_rate": 0.8,
+      "correctness_when_shown": 0.8,
+      "resolved_in_one_search": 0,
+      "signpost_precision": 0.6,
+      "avg_turns": 5.65,
+      "avg_tokens": 232387.05
+    },
+    {
+      "model_family": "codex",
+      "condition": "payload-signpost",
+      "adoption_kind": "used-injected-location",
+      "runs": 20,
+      "shown": 20,
+      "adoption_rate": 0.65,
+      "ran_stack_command": 0,
+      "used_injected_location": 13,
+      "correctness_rate": 0.9,
+      "correctness_when_shown": 0.9,
+      "resolved_in_one_search": 6,
+      "signpost_precision": 0.6,
+      "avg_turns": 2,
+      "avg_tokens": 58275.95
+    }
+  ],
+  "by_class": [
+    {
+      "class": "misleading",
+      "runs": 10,
+      "correctness_rate": 0.7
+    },
+    {
+      "class": "strong",
+      "runs": 10,
+      "correctness_rate": 1
+    },
+    {
+      "class": "weak",
+      "runs": 20,
+      "correctness_rate": 0.85
+    }
+  ],
+  "intent_families": [
+    {
+      "family": "literal-search",
+      "signposts": 39
+    },
+    {
+      "family": "symbol-search",
+      "signposts": 13
+    }
+  ]
+}

@@ -1,0 +1,197 @@
+{
+  "runs": 200,
+  "model_visible_signposts": 53,
+  "cells": [
+    {
+      "model_family": "claude",
+      "condition": "always-signpost",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 20,
+      "adoption_rate": 0,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.8,
+      "correctness_when_shown": 0.8,
+      "resolved_in_one_search": 1,
+      "signpost_precision": 0,
+      "avg_turns": 6.65,
+      "avg_tokens": 260808.65
+    },
+    {
+      "model_family": "claude",
+      "condition": "bare-literal",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 0,
+      "adoption_rate": null,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.8,
+      "correctness_when_shown": null,
+      "resolved_in_one_search": 0,
+      "signpost_precision": null,
+      "avg_turns": 6.35,
+      "avg_tokens": 259033.25
+    },
+    {
+      "model_family": "claude",
+      "condition": "gated-signpost",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 4,
+      "adoption_rate": 0,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.8,
+      "correctness_when_shown": 0.75,
+      "resolved_in_one_search": 0,
+      "signpost_precision": 0,
+      "avg_turns": 5.9,
+      "avg_tokens": 231131.05
+    },
+    {
+      "model_family": "claude",
+      "condition": "prompt-semantic",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 0,
+      "adoption_rate": null,
+      "ran_stack_command": 20,
+      "used_injected_location": 0,
+      "correctness_rate": 0.85,
+      "correctness_when_shown": null,
+      "resolved_in_one_search": 0,
+      "signpost_precision": null,
+      "avg_turns": 8.1,
+      "avg_tokens": 351267.45
+    },
+    {
+      "model_family": "claude",
+      "condition": "replacement",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 0,
+      "adoption_rate": null,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.75,
+      "correctness_when_shown": null,
+      "resolved_in_one_search": 6,
+      "signpost_precision": null,
+      "avg_turns": 3.45,
+      "avg_tokens": 190281.75
+    },
+    {
+      "model_family": "codex",
+      "condition": "always-signpost",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 20,
+      "adoption_rate": 0,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.85,
+      "correctness_when_shown": 0.85,
+      "resolved_in_one_search": 6,
+      "signpost_precision": 0,
+      "avg_turns": 2,
+      "avg_tokens": 59149.6
+    },
+    {
+      "model_family": "codex",
+      "condition": "bare-literal",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 0,
+      "adoption_rate": null,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.85,
+      "correctness_when_shown": null,
+      "resolved_in_one_search": 6,
+      "signpost_precision": null,
+      "avg_turns": 2.1,
+      "avg_tokens": 60115.55
+    },
+    {
+      "model_family": "codex",
+      "condition": "gated-signpost",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 9,
+      "adoption_rate": 0,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.8,
+      "correctness_when_shown": 0.667,
+      "resolved_in_one_search": 6,
+      "signpost_precision": 0,
+      "avg_turns": 2.1,
+      "avg_tokens": 60731.7
+    },
+    {
+      "model_family": "codex",
+      "condition": "prompt-semantic",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 0,
+      "adoption_rate": null,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.9,
+      "correctness_when_shown": null,
+      "resolved_in_one_search": 5,
+      "signpost_precision": null,
+      "avg_turns": 2.3,
+      "avg_tokens": 72249.65
+    },
+    {
+      "model_family": "codex",
+      "condition": "replacement",
+      "adoption_kind": "ran-stack-command",
+      "runs": 20,
+      "shown": 0,
+      "adoption_rate": null,
+      "ran_stack_command": 0,
+      "used_injected_location": 0,
+      "correctness_rate": 0.8,
+      "correctness_when_shown": null,
+      "resolved_in_one_search": 0,
+      "signpost_precision": null,
+      "avg_turns": 2.6,
+      "avg_tokens": 75410.85
+    }
+  ],
+  "by_class": [
+    {
+      "class": "misleading",
+      "runs": 50,
+      "correctness_rate": 0.72
+    },
+    {
+      "class": "strong",
+      "runs": 50,
+      "correctness_rate": 0.98
+    },
+    {
+      "class": "weak",
+      "runs": 100,
+      "correctness_rate": 0.79
+    }
+  ],
+  "intent_families": [
+    {
+      "family": "file-find",
+      "signposts": 2
+    },
+    {
+      "family": "literal-search",
+      "signposts": 51
+    },
+    {
+      "family": "symbol-search",
+      "signposts": 11
+    }
+  ]
+}
