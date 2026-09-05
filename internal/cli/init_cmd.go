@@ -20,6 +20,7 @@ var (
 	initTrackAll     bool
 	initSettings     string
 	initSignpostURL  string
+	initSignpostLog  string
 	initSkipURLCheck bool
 )
 
@@ -75,7 +76,7 @@ flag exists to repair.`,
 			return fmt.Errorf("specify a source with --source NAME (available: %s)", strings.Join(names, ", "))
 		}
 
-		env, err := signpostEnv(initSignpostURL, initSkipURLCheck)
+		env, err := signpostEnv(initSignpostURL, initSignpostLog, initSkipURLCheck)
 		if err != nil {
 			return err
 		}
@@ -91,6 +92,7 @@ func init() {
 	initCmd.Flags().MarkDeprecated("claude-code", "use --source claude-code instead")
 	initCmd.Flags().StringVar(&initSettings, "settings", "", "path to settings file (default: source-specific)")
 	initCmd.Flags().StringVar(&initSignpostURL, "signpost-url", "", "base URL of the search backend the signpost hook should query (its /search route is derived); verified before it is written")
+	initCmd.Flags().StringVar(&initSignpostLog, "signpost-log", "", "path for the signpost event log (default ~/.local/log/dp-signpost-events.jsonl; \"-\" disables it)")
 	initCmd.Flags().BoolVar(&initSkipURLCheck, "skip-signpost-url-check", false, "write --signpost-url without verifying it answers (for installing against a backend that is not up yet)")
 	rootCmd.AddCommand(initCmd)
 }
@@ -104,7 +106,7 @@ func init() {
 // That configuration ran on every pane of a fleet for weeks. An install is the
 // one moment where the mistake is both detectable and cheap to fix, so it fails
 // closed here rather than being discovered by measuring adoption later.
-func signpostEnv(rawURL string, skipCheck bool) (map[string]string, error) {
+func signpostEnv(rawURL, logPath string, skipCheck bool) (map[string]string, error) {
 	if rawURL == "" {
 		return nil, nil
 	}
@@ -123,7 +125,27 @@ func signpostEnv(rawURL string, skipCheck bool) (map[string]string, error) {
 				"Bring the backend up, or pass --skip-signpost-url-check if you are installing ahead of it", err)
 		}
 	}
-	return map[string]string{"DP_SIGNPOST_BOBBIN_URL": route}, nil
+	env := map[string]string{"DP_SIGNPOST_BOBBIN_URL": route}
+
+	// An event log in PRODUCTION, not only in the evaluation harness.
+	//
+	// Every claim about signposting so far comes from a harness, because the
+	// deployed hook wrote no events at all: there was no way to ask what the
+	// fleet actually saw, which is why "wired on every pane" survived for weeks
+	// as a statement about delivery when it was only ever a statement about
+	// installation. One line per eligible search is cheap; not being able to
+	// answer the question is not.
+	if logPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("determine home directory for the signpost event log: %w", err)
+		}
+		logPath = filepath.Join(home, ".local", "log", "dp-signpost-events.jsonl")
+	}
+	if logPath != "-" {
+		env["DP_SIGNPOST_LOG"] = logPath
+	}
+	return env, nil
 }
 
 // checkSignpostBackend asks the route a real question. The budget is generous

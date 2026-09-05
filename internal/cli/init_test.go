@@ -207,8 +207,8 @@ type noInstallerSource struct {
 	name string
 }
 
-func (s *noInstallerSource) Name() string                              { return s.name }
-func (s *noInstallerSource) Description() string                       { return "test source without installer" }
+func (s *noInstallerSource) Name() string                               { return s.name }
+func (s *noInstallerSource) Description() string                        { return "test source without installer" }
 func (s *noInstallerSource) Extract(raw []byte) (*source.Fields, error) { return nil, nil }
 
 // fakeInstallerSource is a test Source that implements Installer with
@@ -218,10 +218,10 @@ type fakeInstallerSource struct {
 	installed bool
 }
 
-func (s *fakeInstallerSource) Name() string                              { return s.name }
-func (s *fakeInstallerSource) Description() string                       { return "fake installer source" }
+func (s *fakeInstallerSource) Name() string                               { return s.name }
+func (s *fakeInstallerSource) Description() string                        { return "fake installer source" }
 func (s *fakeInstallerSource) Extract(raw []byte) (*source.Fields, error) { return nil, nil }
-func (s *fakeInstallerSource) Install(opts source.InstallOpts) error     { return nil }
+func (s *fakeInstallerSource) Install(opts source.InstallOpts) error      { return nil }
 func (s *fakeInstallerSource) IsInstalled(configDir string) (bool, error) {
 	return s.installed, nil
 }

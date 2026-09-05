@@ -16,8 +16,8 @@ import (
 
 // AliasCollection is the portable interchange format for aliases.
 type AliasCollection struct {
-	Meta    CollectionMeta   `json:"meta" toml:"meta"`
-	Aliases []ExportedAlias  `json:"aliases" toml:"aliases"`
+	Meta    CollectionMeta  `json:"meta" toml:"meta"`
+	Aliases []ExportedAlias `json:"aliases" toml:"aliases"`
 }
 
 // CollectionMeta holds metadata about an alias collection.

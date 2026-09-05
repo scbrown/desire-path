@@ -34,8 +34,8 @@ The pattern can be a tool name, error substring, or glob pattern (using *).`,
 }
 
 var mappingsCmd = &cobra.Command{
-	Use:     "mappings",
-	Short:   "List all doc mappings",
+	Use:   "mappings",
+	Short: "List all doc mappings",
 	Example: `  dp mappings
   dp mappings --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
