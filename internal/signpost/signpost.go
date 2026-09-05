@@ -51,32 +51,48 @@ type Config struct {
 
 // Event is the stable JSONL contract consumed by the evaluation harness.
 type Event struct {
-	EventID                string    `json:"event_id"`
-	Timestamp              time.Time `json:"timestamp"`
-	SessionID              string    `json:"session_id,omitempty"`
-	TaskID                 string    `json:"task_id,omitempty"`
-	ModelFamily            string    `json:"model_family,omitempty"`
-	Condition              string    `json:"condition"`
-	Tool                   string    `json:"tool"`
-	Command                string    `json:"command"`
-	CWD                    string    `json:"cwd,omitempty"`
-	Query                  string    `json:"query"`
-	IntentFamily           string    `json:"intent_family"`
-	StackCommand           string    `json:"stack_command,omitempty"`
-	ResultCardinality      int       `json:"result_cardinality"`
-	Threshold              int       `json:"threshold"`
-	Predicate              string    `json:"predicate"`
-	SignpostShown          bool      `json:"signpost_shown"`
-	PayloadMode            bool      `json:"payload_mode"`
-	PayloadBytes           int       `json:"payload_bytes"`
-	PayloadPaths           []string  `json:"payload_paths,omitempty"`
-	SemanticCandidateCount int       `json:"semantic_candidate_count"`
-	SemanticLatencyMS      int64     `json:"semantic_latency_ms"`
-	WarmCacheHit           bool      `json:"warm_cache_hit"`
-	Adopted                *bool     `json:"adopted"`
-	TurnsToLocate          *int      `json:"turns_to_locate"`
-	TokensToResolution     *int      `json:"tokens_to_resolution"`
-	Correct                *bool     `json:"correct"`
+	EventID           string    `json:"event_id"`
+	Timestamp         time.Time `json:"timestamp"`
+	SessionID         string    `json:"session_id,omitempty"`
+	TaskID            string    `json:"task_id,omitempty"`
+	ModelFamily       string    `json:"model_family,omitempty"`
+	Condition         string    `json:"condition"`
+	Tool              string    `json:"tool"`
+	Command           string    `json:"command"`
+	CWD               string    `json:"cwd,omitempty"`
+	Query             string    `json:"query"`
+	IntentFamily      string    `json:"intent_family"`
+	StackCommand      string    `json:"stack_command,omitempty"`
+	ResultCardinality int       `json:"result_cardinality"`
+	Threshold         int       `json:"threshold"`
+	Predicate         string    `json:"predicate"`
+	// HookEvent is which event the payload came from, and it QUALIFIES
+	// SignpostShown rather than decorating it.
+	//
+	// SignpostShown means "this hook emitted context", which on PostToolUse is
+	// the same thing as the model receiving it. On PostToolUseFailure it is
+	// NOT: measured on a live crew pane, additionalContext emitted from that
+	// event never reaches the model. Two independent hooks confirm it, each
+	// proven to have run by its own side effect — dp signpost wrote an event
+	// row with signpost_shown true, dp pave-correct recorded a correction
+	// desire — and neither one's text appeared in the session.
+	//
+	// So a row with hook_event=PostToolUseFailure is evidence the hook FIRED,
+	// and is not evidence of delivery. Do not count those rows as shown when
+	// measuring adoption; that conflation is the exact mistake that let "wired
+	// on every pane" stand for weeks as a claim about delivery.
+	HookEvent              string   `json:"hook_event"`
+	SignpostShown          bool     `json:"signpost_shown"`
+	PayloadMode            bool     `json:"payload_mode"`
+	PayloadBytes           int      `json:"payload_bytes"`
+	PayloadPaths           []string `json:"payload_paths,omitempty"`
+	SemanticCandidateCount int      `json:"semantic_candidate_count"`
+	SemanticLatencyMS      int64    `json:"semantic_latency_ms"`
+	WarmCacheHit           bool     `json:"warm_cache_hit"`
+	Adopted                *bool    `json:"adopted"`
+	TurnsToLocate          *int     `json:"turns_to_locate"`
+	TokensToResolution     *int     `json:"tokens_to_resolution"`
+	Correct                *bool    `json:"correct"`
 }
 
 type payload struct {
@@ -177,7 +193,8 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	e := Event{EventID: uuid.NewString(), Timestamp: time.Now().UTC(), SessionID: p.SessionID,
 		TaskID: cfg.TaskID, ModelFamily: cfg.Model, Condition: cfg.Condition, Tool: intent.Tool,
 		Command: input.Command, CWD: p.CWD, Query: intent.Query, IntentFamily: intent.Family,
-		ResultCardinality: cardinality, Threshold: cfg.Threshold, Predicate: predicate}
+		ResultCardinality: cardinality, Threshold: cfg.Threshold, Predicate: predicate,
+		HookEvent: p.hookEventName()}
 
 	mode, emits := behavior[cfg.Condition]
 	if !emits || (mode.gated && predicate == "none") {

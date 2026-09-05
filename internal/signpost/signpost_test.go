@@ -388,3 +388,21 @@ func TestFailedSearchIsTheNullPredicate(t *testing.T) {
 		t.Fatalf("event name = %q, want PostToolUse", got.HookSpecificOutput.HookEventName)
 	}
 }
+
+// hook_event qualifies signpost_shown: on the failure event the hook emits
+// context that the harness does not surface, so a row from there is evidence
+// the hook ran, not evidence the model saw anything.
+func TestEventRecordsWhichHookItCameFrom(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{`{"tool_name":"Bash","tool_input":{"command":"grep -rn x ."},"tool_response":"a"}`, "PostToolUse"},
+		{`{"tool_name":"Bash","tool_input":{"command":"grep -rn x ."},"error":"Exit code 1"}`, "PostToolUseFailure"},
+	} {
+		_, event, err := Process(context.Background(), []byte(tc.raw), Config{Threshold: 2, Condition: "always-signpost"}, countSearcher(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if event.HookEvent != tc.want {
+			t.Errorf("hook_event = %q, want %q", event.HookEvent, tc.want)
+		}
+	}
+}
