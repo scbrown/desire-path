@@ -1,0 +1,107 @@
+# Stage 1 delivery: intent widening and the payload arm, with no model in the loop
+
+**Date:** 2026-09-05
+**Provider quota spent:** zero — no model runs in this measurement
+**Harness:** `eval/replay-delivery.sh` over `eval/replay-workload.jsonl` (185 rows)
+**Index:** `eval/build-local-index.sh` over the five pinned corpora
+
+Delivery is a property of the hook and the index, so widening the intent
+families and adding a payload arm can both be certified before any assignment is
+spent. This note is that certification. The adoption question it feeds is the
+Stage 1 campaign's, and is reported separately.
+
+## The widening does not cost delivery — measured paired and interleaved
+
+The pre-change build (`f5d7843`) and the widened build were replayed against the
+same warm index, **alternating**, three rounds each:
+
+| round | pre-change | widened |
+|--:|--:|--:|
+| 1 | 185/185 | 185/185 |
+| 2 | 185/185 | 185/185 |
+| 3 | 185/185 | 185/185 |
+
+**Interleaving is the design, not a flourish.** The first replay against a
+freshly started server scores worse *whichever* build runs it: an unpaired
+A-then-B ordering read 177/185 for the widened build and would have published a
+4% regression that does not exist. The first two runs of this session did
+exactly that before the pairing was added.
+
+## The structural route is eight times faster than the semantic one
+
+Of 185 recorded literal searches, **33 (18%) are bare identifiers that resolve**
+and are promoted to the symbol family, which asks `/refs` instead of `/search`:
+
+| family | events | shown | p50 | max |
+|---|--:|--:|--:|--:|
+| `literal-search` | 152 | 152 | 79–93 ms | 152 ms |
+| `symbol-search` | 33 | 33 | **11 ms** | 24 ms |
+
+That is the opposite of what an extra family was expected to cost. Nearly a
+fifth of the workload now answers in a tenth of the budget, and the headroom it
+frees is real: the events that land on the 150 ms boundary are all
+`literal-search`.
+
+**Promotion is decided by resolution, never by the parse.** An identifier that
+resolves nowhere is demoted back to a literal search, and the second round trip
+is skipped outright when the remaining budget cannot pay for it — the contract
+outranks the upgrade. Both arms are unit-tested; the demotion path is the one
+that matters, because a query that merely *looks* like a symbol is the common
+case.
+
+## The payload arm delivers, inside its cap
+
+Same gate as `always-signpost`, injecting the result instead of the command:
+
+| round | eligible | shown | coverage |
+|--:|--:|--:|--:|
+| 1 | 185 | 181 | 97.8% |
+| 2 | 185 | 185 | 100% |
+
+Round 1 ran while the campaign was saturating this host's CPU; round 2 did not.
+Reported rather than dropped, because the production condition this arm will
+live in is a busy machine, not an idle one.
+
+Payload size, over the 185 delivered payloads of round 2: **p50 572 bytes, max
+724** against the 800-byte cap, 3 locations each, and **zero** degraded to a
+pointer. The degrade path exists for a backend that returns a count with no
+locations, and on this index it never fired.
+
+One delivered payload, and the pointer the same event would have produced:
+
+```
+Signpost (none): symbol lookup returned 2 line(s). yupana callers 'ErrCircuitOpen' answers it:
+  claim_test.go:32  circuit := fmt.Errorf("read issue: %w", dolt.ErrCircuitOpen)
+  claim_test.go:33  if !errors.Is(circuit, ErrCircuitOpen) {
+  claim_test.go:34  t.Errorf("wrapped circuit error does not match root beads.ErrCircuitOpen")
+  (3 of 20; run yupana callers 'ErrCircuitOpen' for the rest)
+
+Signpost (none): symbol lookup returned 2 line(s). Try semantic search: yupana callers 'ErrCircuitOpen'
+```
+
+The pointer line above is **the build the campaign is running**, and it is
+wrong: yupana does not do semantic search. The wording is fixed after the
+campaign binary was cut, so the campaign's pointer arms carry the old text. It
+is recorded here rather than quietly corrected, because it is a difference
+between the published arm and the shipped code.
+
+## What is NOT certified here, and why
+
+`file-find` and `history-search` are implemented, parsed and unit-tested, but
+their delivery is **not** certified on the local index in this note. The pinned
+corpora were cloned `--depth 1`, so they carry one commit each and the index
+holds essentially no commit chunks: a history-family measurement against them
+would report zero for a reason that is an artifact of the clone, not a property
+of the family. That is the same "the instrument cannot see the target" failure
+this workstream has paid for twice, and reporting it as a result would be worse
+than not measuring it.
+
+The route itself is live. Against a backend that does hold commit chunks, nine
+family-shaped queries across three repos returned **3 commit results in 8 of 9**,
+with `git:` paths; the ninth is a true miss (a circuit-breaker query against a
+repo with no circuit breaker), and a nonexistent repo returns 0 — controls in
+both directions.
+
+Full certification needs unshallowed corpora and a re-index, which is deferred
+until the campaign finishes: indexing is CPU-bound and would contend with the
+150 ms hook budget the campaign is being measured against.

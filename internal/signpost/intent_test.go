@@ -59,3 +59,19 @@ func TestStackCommandPerFamily(t *testing.T) {
 		}
 	}
 }
+
+// A pointer that mislabels the route it leads to spends its one line of
+// credibility on being wrong: yupana does not do semantic search.
+func TestInviteNamesTheRoute(t *testing.T) {
+	tests := []struct{ family, want string }{
+		{FamilyLiteral, "Try semantic search"},
+		{FamilyFileFind, "Try semantic search"},
+		{FamilyHistory, "Try the commit index"},
+		{FamilySymbol, "Try the structural index"},
+	}
+	for _, tt := range tests {
+		if got := (Intent{Family: tt.family}).Invite(); got != tt.want {
+			t.Errorf("%s: got %q want %q", tt.family, got, tt.want)
+		}
+	}
+}

@@ -189,6 +189,22 @@ func (in Intent) StackCommand(repo string) string {
 	}
 }
 
+// Invite names the ROUTE the pointer leads to. It is family-specific because
+// "Try semantic search: yupana callers 'X'" is incoherent — yupana answers a
+// structural question and bobbin's commit index answers a historical one, and a
+// signpost that mislabels where it is sending the reader has already spent its
+// one line of credibility.
+func (in Intent) Invite() string {
+	switch in.Family {
+	case FamilySymbol:
+		return "Try the structural index"
+	case FamilyHistory:
+		return "Try the commit index"
+	default:
+		return "Try semantic search"
+	}
+}
+
 // Asks describes what the family is asking, for the one line of context a
 // signpost gets. A pointer with no stated purpose reads as a tool advertisement.
 func (in Intent) Asks() string {

@@ -55,6 +55,7 @@
 - [2026-08-27 Local warm signposting](./evaluations/2026-08-27-local-warm-pilot.md)
 - [2026-08-29 Stage 0 delivery coverage](./evaluations/2026-08-29-stage0-delivery-coverage.md)
 - [2026-09-05 Stage 1 preregistration](./evaluations/2026-09-05-stage1-preregistration.md)
+- [2026-09-05 Stage 1 delivery and intent families](./evaluations/2026-09-05-stage1-delivery-and-families.md)
 
 ---
 

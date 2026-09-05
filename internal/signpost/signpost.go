@@ -199,8 +199,8 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 		e.PayloadPaths = paths
 		e.PayloadBytes = len(injected)
 	} else {
-		injected = fmt.Sprintf("Signpost (%s): %s returned %d line(s). Try semantic search: %s",
-			predicate, intent.Asks(), cardinality, command)
+		injected = fmt.Sprintf("Signpost (%s): %s returned %d line(s). %s: %s",
+			predicate, intent.Asks(), cardinality, intent.Invite(), command)
 	}
 
 	var out hookOutput
@@ -282,8 +282,8 @@ func renderPayload(in Intent, predicate string, cardinality int, command string,
 		// Nothing fit, or the backend returned a count with no locations. A
 		// payload arm with no payload is a pointer, and says so rather than
 		// emitting a header with an empty body.
-		return fmt.Sprintf("Signpost (%s): %s returned %d line(s). Try semantic search: %s",
-			predicate, in.Asks(), cardinality, command), nil
+		return fmt.Sprintf("Signpost (%s): %s returned %d line(s). %s: %s",
+			predicate, in.Asks(), cardinality, in.Invite(), command), nil
 	}
 	if result.Count > len(paths) {
 		fmt.Fprintf(&b, "\n  (%d of %d; run %s for the rest)", len(paths), result.Count, command)
