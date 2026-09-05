@@ -158,7 +158,8 @@ func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
 	return hasDPHookCommand(postUse, dpHookCommand) &&
 		hasDPHookCommand(postUse, dpSignpostCommand) &&
 		hasDPHookCommand(preUse, dpSignpostPrefetchCommand) &&
-		hasDPHookCommand(postFailure, dpHookCommand), nil
+		hasDPHookCommand(postFailure, dpHookCommand) &&
+		hasDPHookCommand(postFailure, dpPaveCorrectCommand), nil
 }
 
 // claudeSettings represents the relevant subset of a Claude Code settings file.
@@ -186,13 +187,25 @@ const dpHookCommand = "dp ingest --source claude-code"
 const dpSignpostCommand = "dp signpost"
 const dpSignpostPrefetchCommand = "dp signpost-prefetch"
 
+// dpPaveCorrectCommand is the PostToolUseFailure sibling. It is the correction
+// half of the same contract the signpost keeps: it emits only when a stored rule
+// matches the failure, it never modifies the failing tool call, and it stays
+// silent otherwise. Re-EXECUTING the corrected command is gated separately, on
+// the auto_correct config key, which is off by default.
+//
+// It rides the managed hook source rather than a hand-edited settings file:
+// `gt hooks sync` deletes hooks it does not know about, so a hand-installed
+// entry is removed on the next sync without telling anyone (aegis-uk7x).
+const dpPaveCorrectCommand = "dp pave-correct"
+
 // dpLegacyHookCommand is the old command that may exist in user settings.
 // IsInstalled checks for both so upgrades are detected correctly.
 const dpLegacyHookCommand = "dp record --source claude-code"
 
 // installClaudeHooks performs the Claude Code setup using the given settings path.
-// It installs dp ingest for both PostToolUse and PostToolUseFailure, plus the
-// Bash-scoped signposting prefetch/gating siblings. The dual-write in the ingest
+// It installs dp ingest for both PostToolUse and PostToolUseFailure, the
+// Bash-scoped signposting prefetch/gating siblings, and the pave-correct
+// sibling on PostToolUseFailure. The dual-write in the ingest
 // pipeline ensures failures appear in both invocations and desires tables.
 func installClaudeHooks(settingsPath string) error {
 	settings, err := readClaudeSettings(settingsPath)
@@ -209,6 +222,7 @@ func installClaudeHooks(settingsPath string) error {
 		{"PostToolUse", dpHookCommand},
 		{"PostToolUseFailure", dpHookCommand},
 		{"PostToolUse", dpSignpostCommand},
+		{"PostToolUseFailure", dpPaveCorrectCommand},
 	}
 
 	for _, d := range defs {

@@ -246,20 +246,33 @@ func TestClaudeCodeInstall(t *testing.T) {
 			t.Fatalf("parsing %s: %v", event, err)
 		}
 
-		wantEntries := 1
+		// Assert the COMMANDS, not the entry count: every sibling hook added
+		// since (signpost, pave-correct) lands as its own entry, so a count is
+		// a test of how many features exist rather than of what is installed.
+		want := []string{dpHookCommand}
 		if event == "PostToolUse" {
-			wantEntries = 2
+			want = append(want, dpSignpostCommand)
+		} else {
+			want = append(want, dpPaveCorrectCommand)
 		}
-		if len(entries) != wantEntries {
-			t.Fatalf("%s: expected %d hook entries, got %d", event, wantEntries, len(entries))
-		}
-		if entries[0].Hooks[0].Command != dpHookCommand {
-			t.Errorf("%s: command = %q, want %q", event, entries[0].Hooks[0].Command, dpHookCommand)
-		}
-		if event == "PostToolUse" && entries[1].Hooks[0].Command != dpSignpostCommand {
-			t.Errorf("%s: signpost command = %q, want %q", event, entries[1].Hooks[0].Command, dpSignpostCommand)
+		got := hookCommands(entries)
+		for _, command := range want {
+			if !got[command] {
+				t.Errorf("%s: missing %q (installed: %v)", event, command, got)
+			}
 		}
 	}
+}
+
+// hookCommands is the set of commands installed for one event, across entries.
+func hookCommands(entries []claudeHookEntry) map[string]bool {
+	got := map[string]bool{}
+	for _, e := range entries {
+		for _, h := range e.Hooks {
+			got[h.Command] = true
+		}
+	}
+	return got
 }
 
 func TestClaudeCodeInstallIdempotent(t *testing.T) {
@@ -298,12 +311,19 @@ func TestClaudeCodeInstallIdempotent(t *testing.T) {
 			t.Fatalf("parsing %s: %v", event, err)
 		}
 
-		wantEntries := 1
-		if event == "PostToolUse" {
-			wantEntries = 2
+		// Idempotence is a property of each COMMAND appearing once, not of the
+		// number of entries: a second install must add no duplicate of anything
+		// it already put there.
+		counts := map[string]int{}
+		for _, e := range entries {
+			for _, h := range e.Hooks {
+				counts[h.Command]++
+			}
 		}
-		if len(entries) != wantEntries {
-			t.Fatalf("%s: expected %d hook entries after double install, got %d", event, wantEntries, len(entries))
+		for command, n := range counts {
+			if n != 1 {
+				t.Errorf("%s: %q installed %d times after double install", event, command, n)
+			}
 		}
 	}
 }
@@ -386,17 +406,16 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 		t.Fatalf("parsing PostToolUseFailure: %v", err)
 	}
 
-	if len(ptufEntries) != 2 {
-		t.Fatalf("PostToolUseFailure: expected 2 hook entries, got %d", len(ptufEntries))
-	}
-
-	// Original hook should be first.
+	// The foreign hook must survive, and it must still come first: dp appends,
+	// it never reorders somebody else's configuration.
 	if ptufEntries[0].Hooks[0].Command != "other-tool record" {
 		t.Errorf("first entry command = %q, want %q", ptufEntries[0].Hooks[0].Command, "other-tool record")
 	}
-	// dp hook should be second.
-	if ptufEntries[1].Hooks[0].Command != dpHookCommand {
-		t.Errorf("second entry command = %q, want %q", ptufEntries[1].Hooks[0].Command, dpHookCommand)
+	got := hookCommands(ptufEntries)
+	for _, command := range []string{"other-tool record", dpHookCommand, dpPaveCorrectCommand} {
+		if !got[command] {
+			t.Errorf("PostToolUseFailure: missing %q (installed: %v)", command, got)
+		}
 	}
 
 	// PostToolUse has dp ingest plus the Bash-scoped signposting sibling.

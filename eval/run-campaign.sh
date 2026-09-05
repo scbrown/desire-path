@@ -63,34 +63,58 @@ prompt_for() {
 	printf 'Evaluation task. Locate the code described by: %s\nWork read-only at the pinned revision. %s Do not modify files. Finish with exactly one line: LOCATION path:line\n' "$query" "$instruction"
 }
 
+# score_one derives one result row. ADOPTION IS NOT ONE MEASUREMENT: for a
+# pointer arm it means the agent RAN the stack command it was handed; for the
+# payload arm the command was already run for it, so adoption means the agent
+# USED a location the payload named. Both are recorded on every row, and
+# `adoption_kind` says which one `adopted` holds, so nothing downstream can sum
+# two different questions into one rate by accident.
 score_one() {
 	local assignment=$1 acceptance=$2 raw=$3 events=$4 model=$5 condition=$6
-	local final turns tokens adopted shown correct signpost_correct
+	local final turns tokens ran_stack shown correct signpost_correct
+	local used_payload adopted adoption_kind families
 	if [[ $model == codex ]]; then
 		final=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="agent_message") | .item.text] | last // ""' "$raw") || return
 		turns=$(jq -rs '[.[] | select(.type=="item.completed" and .item.type=="command_execution")] | length' "$raw") || return
 		tokens=$(jq -rs '[.[] | select(.type=="turn.completed") | (.usage.input_tokens + .usage.output_tokens)] | add // 0' "$raw") || return
-		adopted=$(jq -rs 'any(.[]; .type=="item.completed" and .item.type=="command_execution" and ((.item.command // "") | test("(^|[[:space:]])bobbin[[:space:]]+search")))' "$raw") || return
+		ran_stack=$(jq -rs 'any(.[]; .type=="item.completed" and .item.type=="command_execution" and ((.item.command // "") | test("(^|[[:space:]])(bobbin[[:space:]]+search|yupana[[:space:]]+(callers|impact))")))' "$raw") || return
 	else
 		final=$(jq -rs '[.[] | select(.type=="result") | .result] | last // ""' "$raw") || return
 		turns=$(jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash")] | length' "$raw") || return
 		tokens=$(jq -rs '[.[] | select(.type=="result") | (.usage.input_tokens + .usage.cache_creation_input_tokens + .usage.cache_read_input_tokens + .usage.output_tokens)] | add // 0' "$raw") || return
-		adopted=$(jq -rs 'any(.[]; .type=="assistant" and any(.message.content[]?; .type=="tool_use" and .name=="Bash" and ((.input.command // "") | test("(^|[[:space:]])bobbin[[:space:]]+search"))))' "$raw") || return
+		ran_stack=$(jq -rs 'any(.[]; .type=="assistant" and any(.message.content[]?; .type=="tool_use" and .name=="Bash" and ((.input.command // "") | test("(^|[[:space:]])(bobbin[[:space:]]+search|yupana[[:space:]]+(callers|impact))"))))' "$raw") || return
 	fi
 	shown=false
+	used_payload=false
+	families='[]'
 	if [[ -s $events ]]; then
 		shown=$(jq -s 'any(.[]; .signpost_shown == true)' "$events")
+		families=$(jq -sc '[.[] | select(.signpost_shown) | .intent_family] | unique' "$events")
+		# Did the final answer land on a path the payload actually handed over?
+		used_payload=$(jq -sr --arg final "$final" '
+			[.[] | select(.signpost_shown) | .payload_paths // [] | .[]] as $offered |
+			(try ($final | capture("LOCATION[[:space:]]+(?<path>[^[:space:]:]+):(?<line>[0-9]+)")) catch null) as $reported |
+			if $reported == null then false else ($offered | any(. == $reported.path)) end' "$events") || return
 	fi
 	correct=$(jq -nr --arg final "$final" --argjson acceptance "$acceptance" '
 		(try ($final | capture("LOCATION[[:space:]]+(?<path>[^[:space:]:]+):(?<line>[0-9]+)")) catch null) as $reported |
 		if $reported == null then false else $acceptance.accepted | any(.path == $reported.path and (.line_min <= ($reported.line|tonumber)) and (.line_max >= ($reported.line|tonumber))) end') || return
+
+	adoption_kind=ran-stack-command
+	adopted=$ran_stack
+	if [[ $condition == payload-signpost ]]; then
+		adoption_kind=used-injected-location
+		adopted=$used_payload
+	fi
 	signpost_correct=false
 	if [[ $shown == true && $adopted == true && $correct == true ]]; then
 		signpost_correct=true
 	fi
 	jq -nc --argjson assignment "$assignment" --argjson shown "$shown" --argjson adopted "$adopted" \
+		--argjson ran_stack "$ran_stack" --argjson used_payload "$used_payload" --arg adoption_kind "$adoption_kind" \
+		--argjson families "$families" \
 		--argjson correct "$correct" --argjson spcorrect "$signpost_correct" --argjson turns "$turns" --argjson tokens "$tokens" \
-		'{assignment_id:$assignment.assignment_id,model_family:$assignment.model_family,condition:$assignment.condition,signpost_shown:$shown,adopted:$adopted,correct:$correct,signpost_correct:$spcorrect,turns_to_locate:$turns,tokens_to_resolution:$tokens}' || return
+		'{assignment_id:$assignment.assignment_id,task_id:$assignment.task_id,class:$assignment.class,model_family:$assignment.model_family,condition:$assignment.condition,signpost_shown:$shown,adopted:$adopted,adoption_kind:$adoption_kind,ran_stack_command:$ran_stack,used_injected_location:$used_payload,intent_families:$families,correct:$correct,signpost_correct:$spcorrect,turns_to_locate:$turns,tokens_to_resolution:$tokens}' || return
 }
 
 completed=0
@@ -128,7 +152,7 @@ while IFS= read -r assignment; do
 	status=0
 	if [[ $model == codex ]]; then
 		args=(codex exec --ephemeral --ignore-user-config --ignore-rules --sandbox read-only --json -C "$repo_dir")
-		if [[ $condition == always-signpost || $condition == gated-signpost ]]; then
+		if [[ $condition == always-signpost || $condition == gated-signpost || $condition == payload-signpost ]]; then
 			escaped=${hook_cmd//\/\\}; escaped=${escaped//\"/\\\"}
 			pre_escaped=${prefetch_cmd//\/\\}; pre_escaped=${pre_escaped//\"/\\\"}
 			args+=(--dangerously-bypass-hook-trust -c "hooks.PreToolUse=[{matcher=\"Bash\",hooks=[{type=\"command\",command=\"$pre_escaped\"}]}]" -c "hooks.PostToolUse=[{matcher=\"Bash\",hooks=[{type=\"command\",command=\"$escaped\"}]}]")
@@ -137,7 +161,7 @@ while IFS= read -r assignment; do
 	else
 		jq -n --arg pre "$prefetch_cmd" --arg post "$hook_cmd" '{hooks:{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$pre,timeout:5}]}],PostToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$post,timeout:5}]}]}}' > "$settings"
 		args=(claude -p --no-session-persistence --permission-mode dontAsk --tools Bash --disable-slash-commands --setting-sources '' --output-format stream-json --verbose)
-		if [[ $condition == always-signpost || $condition == gated-signpost ]]; then
+		if [[ $condition == always-signpost || $condition == gated-signpost || $condition == payload-signpost ]]; then
 			args+=(--settings "$settings")
 		fi
 		(cd "$repo_dir" && "${env_args[@]}" "${args[@]}" "$prompt" < /dev/null) > "$raw" || status=$?

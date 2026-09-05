@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -381,19 +382,27 @@ func TestConvergenceInitInstallsSingleIngestHookForBothEvents(t *testing.T) {
 			t.Fatalf("parsing %s: %v", event, err)
 		}
 
-		wantEntries := 1
-		if event == "PostToolUse" {
-			wantEntries = 2
+		// This test is about the INGEST entry point being one command on both
+		// events. Sibling hooks (signpost, pave-correct) each land as their own
+		// entry, so assert on commands rather than on how many entries exist.
+		matcherOf := map[string]string{}
+		for _, e := range entries {
+			for _, h := range e.Hooks {
+				matcherOf[h.Command] = e.Matcher
+			}
 		}
-		if len(entries) != wantEntries {
-			t.Fatalf("%s: expected %d hook entries, got %d", event, wantEntries, len(entries))
+		if _, ok := matcherOf["dp ingest --source claude-code"]; !ok {
+			t.Errorf("%s: missing the ingest hook (installed: %v)", event, keysOf(matcherOf))
 		}
-		cmd := entries[0].Hooks[0].Command
-		if cmd != "dp ingest --source claude-code" {
-			t.Errorf("%s: command = %q, want %q", event, cmd, "dp ingest --source claude-code")
+		sibling := "dp signpost"
+		if event == "PostToolUseFailure" {
+			sibling = "dp pave-correct"
 		}
-		if event == "PostToolUse" && (entries[1].Matcher != "Bash" || entries[1].Hooks[0].Command != "dp signpost") {
-			t.Errorf("PostToolUse signpost entry = %+v", entries[1])
+		matcher, ok := matcherOf[sibling]
+		if !ok {
+			t.Errorf("%s: missing %q (installed: %v)", event, sibling, keysOf(matcherOf))
+		} else if sibling == "dp signpost" && matcher != "Bash" {
+			t.Errorf("PostToolUse signpost entry matcher = %q, want Bash", matcher)
 		}
 	}
 
@@ -731,4 +740,15 @@ func assertDesiresEqual(t *testing.T, a, b model.Desire) {
 	if a.CWD != b.CWD {
 		t.Errorf("CWD: %q vs %q", a.CWD, b.CWD)
 	}
+}
+
+// keysOf names what is installed, for a failure message that says what it found
+// rather than only what it wanted.
+func keysOf(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

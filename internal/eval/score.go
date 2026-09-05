@@ -14,14 +14,20 @@ type Result struct {
 	Condition       string `json:"condition"`
 	Shown           bool   `json:"signpost_shown"`
 	Adopted         bool   `json:"adopted"`
+	AdoptionKind    string `json:"adoption_kind"`
 	Correct         bool   `json:"correct"`
 	SignpostCorrect bool   `json:"signpost_correct"`
 	Turns           int    `json:"turns_to_locate"`
 	Tokens          int    `json:"tokens_to_resolution"`
 }
 type Summary struct {
-	ModelFamily       string  `json:"model_family"`
-	Condition         string  `json:"condition"`
+	ModelFamily string `json:"model_family"`
+	Condition   string `json:"condition"`
+	// AdoptionKind names what AdoptionRate MEASURED, because it is not the same
+	// act in every arm: a pointer arm counts running the stack command, the
+	// payload arm counts using a location that was already fetched. Two rates
+	// carrying different kinds must never be averaged together.
+	AdoptionKind      string  `json:"adoption_kind,omitempty"`
 	Runs              int     `json:"runs"`
 	Shown             int     `json:"shown"`
 	AdoptionRate      float64 `json:"adoption_rate"`
@@ -55,6 +61,12 @@ func Score(r io.Reader) ([]Summary, error) {
 			groups[k] = g
 		}
 		g.Runs++
+		if x.AdoptionKind != "" {
+			if g.AdoptionKind != "" && g.AdoptionKind != x.AdoptionKind {
+				return nil, fmt.Errorf("line %d: %s/%s mixes adoption kinds %q and %q", line, x.ModelFamily, x.Condition, g.AdoptionKind, x.AdoptionKind)
+			}
+			g.AdoptionKind = x.AdoptionKind
+		}
 		if x.Shown {
 			g.Shown++
 		}

@@ -13,20 +13,42 @@ import (
 )
 
 var signpostCmd = &cobra.Command{
-	Use:     "signpost",
-	Short:   "Offer semantic search after weak literal-search outcomes (hook internal)",
-	Long:    "Reads a Claude Code PostToolUse payload from stdin. Bash-mediated grep and rg calls are evaluated after completion; eligible results receive a Bobbin command as disjoint hook context. Failures and timeouts stay silent.",
-	Example: `  echo '{"tool_name":"Bash","tool_input":{"command":"rg retry ."},"tool_response":""}' | dp signpost`,
-	RunE:    runSignpost,
+	Use:   "signpost",
+	Short: "Offer semantic search after weak literal-search outcomes (hook internal)",
+	Long: `Reads a Claude Code PostToolUse payload from stdin and discovers what the
+command was ASKING, across four intent families: a literal search (grep, rg), a
+file lookup (find -name), a history search (git log -S, --grep), and a symbol
+lookup (a bare identifier that resolves in the index). Eligible results receive
+the stack command that answers the question, as disjoint hook context. Failures
+and timeouts stay silent, and the tool contract is never modified.
+
+Environment:
+  DP_SIGNPOST_CONDITION          always-signpost | gated-signpost |
+                                 payload-signpost | payload-gated-signpost.
+                                 Anything else never emits.
+  DP_SIGNPOST_PAYLOAD=1          Inject the RESULT of the stack command instead
+                                 of the command, on any emitting condition.
+  DP_SIGNPOST_PAYLOAD_HITS       Locations injected in payload mode (default 3).
+  DP_SIGNPOST_PAYLOAD_MAX_BYTES  Payload size cap (default 800).
+  DP_SIGNPOST_THRESHOLD          Line count above which a result is high
+                                 cardinality (default 100).
+  DP_SIGNPOST_TIMEOUT_MS         Semantic lookup budget (default 150).
+  DP_SIGNPOST_BOBBIN_URL         The /search route; /refs is derived from it.
+  DP_SIGNPOST_REPO               Repository scope for the lookup.`,
+	Example: `  echo '{"tool_name":"Bash","tool_input":{"command":"rg retry ."},"tool_response":""}' | dp signpost
+  DP_SIGNPOST_CONDITION=payload-signpost dp signpost < payload.json`,
+	RunE: runSignpost,
 }
 
 var signpostPrefetchCmd = &cobra.Command{Use: "signpost-prefetch", Hidden: true, RunE: runSignpostPrefetch}
 var signpostFetchCmd = &cobra.Command{Use: "signpost-fetch", Hidden: true, RunE: runSignpostFetch}
-var fetchID, fetchQuery string
+var fetchID, fetchQuery, fetchFamily, fetchSymbol string
 
 func init() {
 	signpostFetchCmd.Flags().StringVar(&fetchID, "id", "", "tool-use join key")
 	signpostFetchCmd.Flags().StringVar(&fetchQuery, "query", "", "semantic query")
+	signpostFetchCmd.Flags().StringVar(&fetchFamily, "family", "", "discovered intent family")
+	signpostFetchCmd.Flags().StringVar(&fetchSymbol, "symbol", "", "identifier to try resolving structurally")
 	rootCmd.AddCommand(signpostCmd, signpostPrefetchCmd, signpostFetchCmd)
 }
 
@@ -42,16 +64,17 @@ func runSignpostPrefetch(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return nil
 	}
-	_, query, ok := signpost.PrefetchRequest(raw)
+	_, intent, ok := signpost.PrefetchRequest(raw)
 	if !ok {
 		return nil
 	}
-	id := signpost.CacheKey(os.Getenv("DP_SIGNPOST_REPO"), query)
+	id := signpost.CacheKey(os.Getenv("DP_SIGNPOST_REPO"), intent.Query)
 	exe, err := os.Executable()
 	if err != nil {
 		return nil
 	}
-	child := exec.Command(exe, "signpost-fetch", "--id", id, "--query", query)
+	child := exec.Command(exe, "signpost-fetch", "--id", id, "--query", intent.Query,
+		"--family", intent.Family, "--symbol", intent.SymbolCandidate)
 	child.Stdin, child.Stdout, child.Stderr = nil, nil, nil
 	if child.Start() == nil {
 		_ = child.Process.Release()
@@ -59,6 +82,11 @@ func runSignpostPrefetch(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
+// runSignpostFetch performs the speculative lookup out of band. It runs the
+// SAME resolution Process would run, including the symbol promotion, and stores
+// the family it settled on: the PostToolUse hook cannot afford to discover that
+// for itself inside 150 ms, so the prefetch discovers it on the 5 s budget and
+// hands over the answer along with which question it turned out to be.
 func runSignpostFetch(cmd *cobra.Command, _ []string) error {
 	if fetchID == "" || fetchQuery == "" {
 		return nil
@@ -66,10 +94,15 @@ func runSignpostFetch(cmd *cobra.Command, _ []string) error {
 	timeout := time.Duration(envInt("DP_SIGNPOST_PREFETCH_TIMEOUT_MS", 5000)) * time.Millisecond
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	count, err := signpost.HTTPSearcher(env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"),
-		os.Getenv("DP_SIGNPOST_REPO"), searchMode(), timeout)(ctx, fetchQuery)
+	intent := signpost.Intent{Family: fetchFamily, Query: fetchQuery, SymbolCandidate: fetchSymbol}
+	if intent.Family == "" {
+		intent.Family = signpost.FamilyLiteral
+	}
+	search := signpost.HTTPSearcher(env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"),
+		os.Getenv("DP_SIGNPOST_REPO"), searchMode(), timeout)
+	resolved, result, err := signpost.Resolve(ctx, intent, search)
 	if err == nil {
-		_ = signpost.WriteWarmResult(signpostCacheDir(), fetchID, count)
+		_ = signpost.WriteWarmResult(signpostCacheDir(), fetchID, resolved.Family, result)
 	}
 	return nil
 }
@@ -84,7 +117,11 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 	cfg := signpost.Config{Threshold: threshold, Timeout: timeout,
 		BobbinURL: env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"),
 		LogPath:   env("DP_SIGNPOST_LOG", ""), Condition: env("DP_SIGNPOST_CONDITION", "gated-signpost"),
-		TaskID: os.Getenv("DP_SIGNPOST_TASK_ID"), Model: os.Getenv("DP_SIGNPOST_MODEL_FAMILY"), Repo: os.Getenv("DP_SIGNPOST_REPO"), CacheDir: signpostCacheDir()}
+		TaskID: os.Getenv("DP_SIGNPOST_TASK_ID"), Model: os.Getenv("DP_SIGNPOST_MODEL_FAMILY"),
+		Repo: os.Getenv("DP_SIGNPOST_REPO"), CacheDir: signpostCacheDir(),
+		Payload:         os.Getenv("DP_SIGNPOST_PAYLOAD") == "1",
+		PayloadHits:     envInt("DP_SIGNPOST_PAYLOAD_HITS", signpost.DefaultPayloadHits),
+		PayloadMaxBytes: envInt("DP_SIGNPOST_PAYLOAD_MAX_BYTES", signpost.DefaultPayloadMaxBytes)}
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 	out, event, err := signpost.Process(ctx, raw, cfg, signpost.HTTPSearcher(cfg.BobbinURL, cfg.Repo, searchMode(), timeout))

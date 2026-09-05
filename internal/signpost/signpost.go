@@ -10,11 +10,23 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+// Defaults for the payload arm. The cap is a context budget, not a display
+// preference: an injected result competes for the same window the agent is
+// reasoning in, and a signpost that costs more than the search it replaces is
+// not an improvement.
+const (
+	DefaultPayloadHits      = 3
+	DefaultPayloadMaxBytes  = 800
+	defaultSnippetChars     = 120
+	defaultFallbackDeadline = 40 * time.Millisecond
 )
 
 // Config controls the gating predicate and semantic side query.
@@ -28,6 +40,13 @@ type Config struct {
 	Model     string
 	Repo      string
 	CacheDir  string
+
+	// Payload forces payload mode on any emitting condition. The payload
+	// conditions set it implicitly; the field exists so a fleet deployment can
+	// turn one on without renaming its condition.
+	Payload         bool
+	PayloadHits     int
+	PayloadMaxBytes int
 }
 
 // Event is the stable JSONL contract consumed by the evaluation harness.
@@ -42,10 +61,15 @@ type Event struct {
 	Command                string    `json:"command"`
 	CWD                    string    `json:"cwd,omitempty"`
 	Query                  string    `json:"query"`
+	IntentFamily           string    `json:"intent_family"`
+	StackCommand           string    `json:"stack_command,omitempty"`
 	ResultCardinality      int       `json:"result_cardinality"`
 	Threshold              int       `json:"threshold"`
 	Predicate              string    `json:"predicate"`
 	SignpostShown          bool      `json:"signpost_shown"`
+	PayloadMode            bool      `json:"payload_mode"`
+	PayloadBytes           int       `json:"payload_bytes"`
+	PayloadPaths           []string  `json:"payload_paths,omitempty"`
 	SemanticCandidateCount int       `json:"semantic_candidate_count"`
 	SemanticLatencyMS      int64     `json:"semantic_latency_ms"`
 	WarmCacheHit           bool      `json:"warm_cache_hit"`
@@ -64,8 +88,24 @@ type payload struct {
 	CWD          string          `json:"cwd"`
 }
 
+// Hit is one stack answer: where it is, and enough of it to judge without
+// opening the file.
+type Hit struct {
+	Path    string `json:"path"`
+	Line    int    `json:"line"`
+	Snippet string `json:"snippet,omitempty"`
+}
+
+// Result is what the stack returned for one intent.
+type Result struct {
+	Count int   `json:"count"`
+	Hits  []Hit `json:"hits,omitempty"`
+}
+
 type cachedResult struct {
-	Count int `json:"count"`
+	Family string `json:"family,omitempty"`
+	Count  int    `json:"count"`
+	Hits   []Hit  `json:"hits,omitempty"`
 }
 
 type hookOutput struct {
@@ -75,8 +115,20 @@ type hookOutput struct {
 	} `json:"hookSpecificOutput"`
 }
 
-// Searcher returns the number of semantic candidates for a query.
-type Searcher func(context.Context, string) (int, error)
+// Searcher answers one intent from the Quipu stack. It replaced a
+// query-string-in, count-out function when payload mode landed: pointing at a
+// command needs a count, RUNNING it needs the result.
+type Searcher func(context.Context, Intent) (Result, error)
+
+// behavior decides, from the condition name alone, whether this hook emits and
+// in which mode. Conditions absent from the table never emit — the baseline
+// arms and anything unrecognised, which fails closed.
+var behavior = map[string]struct{ gated, payload bool }{
+	"always-signpost":        {gated: false, payload: false},
+	"gated-signpost":         {gated: true, payload: false},
+	"payload-signpost":       {gated: false, payload: true},
+	"payload-gated-signpost": {gated: true, payload: true},
+}
 
 // Process evaluates one PostToolUse payload. Empty output means stay silent.
 func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]byte, Event, error) {
@@ -93,8 +145,8 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	if json.Unmarshal(p.ToolInput, &input) != nil {
 		return nil, Event{}, nil
 	}
-	tool, query, ok := literalQuery(input.Command)
-	if !ok || query == "" {
+	intent, ok := DiscoverIntent(input.Command)
+	if !ok || intent.Query == "" {
 		return nil, Event{}, nil
 	}
 
@@ -106,69 +158,186 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 		predicate = "high-cardinality"
 	}
 	e := Event{EventID: uuid.NewString(), Timestamp: time.Now().UTC(), SessionID: p.SessionID,
-		TaskID: cfg.TaskID, ModelFamily: cfg.Model, Condition: cfg.Condition, Tool: tool,
-		Command: input.Command, CWD: p.CWD, Query: query, ResultCardinality: cardinality,
-		Threshold: cfg.Threshold, Predicate: predicate}
-	if (predicate == "none" && cfg.Condition != "always-signpost") || cfg.Condition == "bare-literal" || cfg.Condition == "prompt-semantic" || cfg.Condition == "replacement" {
+		TaskID: cfg.TaskID, ModelFamily: cfg.Model, Condition: cfg.Condition, Tool: intent.Tool,
+		Command: input.Command, CWD: p.CWD, Query: intent.Query, IntentFamily: intent.Family,
+		ResultCardinality: cardinality, Threshold: cfg.Threshold, Predicate: predicate}
+
+	mode, emits := behavior[cfg.Condition]
+	if !emits || (mode.gated && predicate == "none") {
 		return nil, e, nil
 	}
+	usePayload := mode.payload || cfg.Payload
+	e.PayloadMode = usePayload
 
 	started := time.Now()
-	count, hit, err := warmResult(cfg.CacheDir, CacheKey(cfg.Repo, query))
-	if !hit {
-		count, err = search(ctx, query)
+	cached, hit := warmResult(cfg.CacheDir, CacheKey(cfg.Repo, intent.Query))
+	var result Result
+	var err error
+	if hit {
+		if cached.Family != "" {
+			intent.Family = cached.Family
+		}
+		result = Result{Count: cached.Count, Hits: cached.Hits}
+	} else {
+		intent, result, err = Resolve(ctx, intent, search)
 	}
 	e.SemanticLatencyMS = time.Since(started).Milliseconds()
 	e.WarmCacheHit = hit
-	if err != nil || count == 0 {
+	e.IntentFamily = intent.Family
+	if err != nil || result.Count == 0 {
 		return nil, e, nil
 	}
-	e.SemanticCandidateCount = count
+	e.SemanticCandidateCount = result.Count
 	e.SignpostShown = true
+	command := intent.StackCommand(cfg.Repo)
+	e.StackCommand = command
+
+	var injected string
+	if usePayload {
+		var paths []string
+		injected, paths = renderPayload(intent, predicate, cardinality, command, result, cfg)
+		e.PayloadPaths = paths
+		e.PayloadBytes = len(injected)
+	} else {
+		injected = fmt.Sprintf("Signpost (%s): %s returned %d line(s). Try semantic search: %s",
+			predicate, intent.Asks(), cardinality, command)
+	}
+
 	var out hookOutput
 	out.HookSpecificOutput.HookEventName = "PostToolUse"
-	command := "bobbin search " + shellQuote(query)
-	if cfg.Repo != "" {
-		command = "bobbin search --repo " + shellQuote(cfg.Repo) + " " + shellQuote(query)
-	}
-	out.HookSpecificOutput.AdditionalContext = fmt.Sprintf("Signpost (%s): literal search returned %d line(s). Try semantic search: %s", predicate, cardinality, command)
+	out.HookSpecificOutput.AdditionalContext = injected
 	b, err := json.Marshal(out)
 	return b, e, err
 }
 
+// Resolve answers an intent, promoting a symbol candidate to FamilySymbol only
+// when the index resolves it. An identifier that resolves nowhere is just a
+// string, and must be searched as one — but only if the remaining budget can
+// pay for a second round trip, because the 150 ms contract outranks the
+// upgrade.
+func Resolve(ctx context.Context, in Intent, search Searcher) (Intent, Result, error) {
+	if search == nil {
+		return in, Result{}, nil
+	}
+	if in.SymbolCandidate != "" {
+		sym := in
+		sym.Family = FamilySymbol
+		sym.Query = in.SymbolCandidate
+		res, err := search(ctx, sym)
+		if err == nil && res.Count > 0 {
+			return sym, res, nil
+		}
+		if !budgetRemains(ctx, defaultFallbackDeadline) {
+			return sym, Result{}, err
+		}
+	}
+	res, err := search(ctx, in)
+	return in, res, err
+}
+
+func budgetRemains(ctx context.Context, need time.Duration) bool {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return true
+	}
+	return time.Until(deadline) >= need
+}
+
+// renderPayload injects the ANSWER instead of the command. It returns the
+// context text and the paths it named, which is what the harness scores
+// adoption against: taking a payload means using a location it handed over,
+// which is a different act from running a command and must not be summed with
+// pointer adoption.
+func renderPayload(in Intent, predicate string, cardinality int, command string, result Result, cfg Config) (string, []string) {
+	maxHits := cfg.PayloadHits
+	if maxHits <= 0 {
+		maxHits = DefaultPayloadHits
+	}
+	maxBytes := cfg.PayloadMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = DefaultPayloadMaxBytes
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Signpost (%s): %s returned %d line(s). %s answers it:",
+		predicate, in.Asks(), cardinality, command)
+	var paths []string
+	for i, h := range result.Hits {
+		if i >= maxHits {
+			break
+		}
+		line := "\n  " + h.Path
+		if h.Line > 0 {
+			line += fmt.Sprintf(":%d", h.Line)
+		}
+		if h.Snippet != "" {
+			line += "  " + truncate(oneLine(h.Snippet), defaultSnippetChars)
+		}
+		if b.Len()+len(line) > maxBytes {
+			break
+		}
+		b.WriteString(line)
+		paths = append(paths, h.Path)
+	}
+	if len(paths) == 0 {
+		// Nothing fit, or the backend returned a count with no locations. A
+		// payload arm with no payload is a pointer, and says so rather than
+		// emitting a header with an empty body.
+		return fmt.Sprintf("Signpost (%s): %s returned %d line(s). Try semantic search: %s",
+			predicate, in.Asks(), cardinality, command), nil
+	}
+	if result.Count > len(paths) {
+		fmt.Fprintf(&b, "\n  (%d of %d; run %s for the rest)", len(paths), result.Count, command)
+	}
+	return b.String(), paths
+}
+
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(s, "\n", " ")), " ")
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
 // PrefetchRequest extracts the stable join key and semantic query from a
 // PreToolUse payload. It performs no search and never changes hook behavior.
-func PrefetchRequest(raw []byte) (string, string, bool) {
+func PrefetchRequest(raw []byte) (string, Intent, bool) {
 	var p payload
 	if json.Unmarshal(raw, &p) != nil || p.ToolName != "Bash" || p.ToolUseID == "" {
-		return "", "", false
+		return "", Intent{}, false
 	}
 	var input struct {
 		Command string `json:"command"`
 	}
 	if json.Unmarshal(p.ToolInput, &input) != nil {
-		return "", "", false
+		return "", Intent{}, false
 	}
-	_, query, ok := literalQuery(input.Command)
-	return p.ToolUseID, query, ok && query != ""
+	intent, ok := DiscoverIntent(input.Command)
+	return p.ToolUseID, intent, ok && intent.Query != ""
 }
 
 // CacheKey identifies reusable semantic work without coupling it to one hook
-// invocation. Repo scoping prevents same-text queries crossing corpora.
+// invocation. Repo scoping prevents same-text queries crossing corpora. The
+// family is NOT part of the key: the prefetch resolves the family the same way
+// Process would and records it in the entry, so PostToolUse can adopt a
+// resolution it could not have predicted before looking.
 func CacheKey(repo, query string) string {
 	sum := sha256.Sum256([]byte(repo + "\x00" + query))
 	return fmt.Sprintf("%x", sum[:16])
 }
 
 // WriteWarmResult atomically publishes a speculative result for PostToolUse.
-func WriteWarmResult(dir, id string, count int) error {
+func WriteWarmResult(dir, id, family string, result Result) error {
 	if dir == "" || id == "" {
 		return nil
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	b, err := json.Marshal(cachedResult{Count: count})
+	b, err := json.Marshal(cachedResult{Family: family, Count: result.Count, Hits: result.Hits})
 	if err != nil {
 		return err
 	}
@@ -190,24 +359,21 @@ func WriteWarmResult(dir, id string, count int) error {
 	return os.Rename(name, warmPath(dir, id))
 }
 
-func warmResult(dir, id string) (int, bool, error) {
+func warmResult(dir, id string) (cachedResult, bool) {
 	if dir == "" || id == "" {
-		return 0, false, nil
+		return cachedResult{}, false
 	}
 	path := warmPath(dir, id)
 	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return 0, false, nil
-	}
 	if err != nil {
-		return 0, false, err
+		return cachedResult{}, false
 	}
 	_ = os.Remove(path)
 	var result cachedResult
 	if json.Unmarshal(b, &result) == nil {
-		return result.Count, true, nil
+		return result, true
 	}
-	return 0, false, nil
+	return cachedResult{}, false
 }
 
 func warmPath(dir, id string) string {
@@ -220,7 +386,7 @@ func warmPath(dir, id string) string {
 	return filepath.Join(dir, safe+".json")
 }
 
-// HTTPSearcher builds a latency-bounded Bobbin search function. mode selects
+// HTTPSearcher builds a latency-bounded stack search function. mode selects
 // the backend's search mode; empty leaves the backend default in place, which
 // is what the hook ships with.
 //
@@ -230,43 +396,141 @@ func warmPath(dir, id string) string {
 // identical candidate counts. An earlier unpaired reading of 330 ms vs 106 ms
 // was an ordering artifact of a cold server and is not a reason to change the
 // default.
+//
+// endpoint names the /search route; sibling routes (/refs) are derived from it,
+// so one configured URL still describes the whole backend.
 func HTTPSearcher(endpoint, repo, mode string, timeout time.Duration) Searcher {
 	client := &http.Client{Timeout: timeout}
-	return func(ctx context.Context, query string) (int, error) {
-		u, err := url.Parse(endpoint)
-		if err != nil {
-			return 0, err
+	return func(ctx context.Context, in Intent) (Result, error) {
+		if in.Family == FamilySymbol {
+			return refsQuery(ctx, client, sibling(endpoint, "refs"), repo, in.Query)
 		}
-		q := u.Query()
-		q.Set("q", query)
-		q.Set("limit", "3")
-		if repo != "" {
-			q.Set("repo", repo)
-		}
-		if mode != "" {
-			q.Set("mode", mode)
-		}
-		u.RawQuery = q.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-		if err != nil {
-			return 0, err
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return 0, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return 0, fmt.Errorf("bobbin status %d", resp.StatusCode)
-		}
-		var result struct {
-			Count int `json:"count"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return 0, err
-		}
-		return result.Count, nil
+		return searchQuery(ctx, client, endpoint, repo, mode, in)
 	}
+}
+
+// sibling replaces the last path segment of endpoint with name. A backend that
+// answers /search answers /refs beside it; deriving the route keeps one
+// configured URL rather than one per family, and an endpoint that is not a
+// route at all is returned unchanged rather than mangled.
+func sibling(endpoint, name string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Path == "" || u.Path == "/" {
+		return endpoint
+	}
+	u.Path = path.Join(path.Dir(u.Path), name)
+	return u.String()
+}
+
+func searchQuery(ctx context.Context, client *http.Client, endpoint, repo, mode string, in Intent) (Result, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return Result{}, err
+	}
+	q := u.Query()
+	q.Set("q", in.Query)
+	q.Set("limit", "3")
+	if repo != "" {
+		q.Set("repo", repo)
+	}
+	if mode != "" {
+		q.Set("mode", mode)
+	}
+	if in.Family == FamilyHistory {
+		q.Set("type", "commit")
+	}
+	u.RawQuery = q.Encode()
+	body, err := get(ctx, client, u.String())
+	if err != nil {
+		return Result{}, err
+	}
+	var resp struct {
+		Count   int `json:"count"`
+		Results []struct {
+			FilePath       string `json:"file_path"`
+			Name           string `json:"name"`
+			StartLine      int    `json:"start_line"`
+			ContentPreview string `json:"content_preview"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return Result{}, err
+	}
+	out := Result{Count: resp.Count}
+	for _, r := range resp.Results {
+		snippet := r.ContentPreview
+		if snippet == "" {
+			snippet = r.Name
+		}
+		out.Hits = append(out.Hits, Hit{Path: r.FilePath, Line: r.StartLine, Snippet: snippet})
+	}
+	return out, nil
+}
+
+// refsQuery asks the structural route whether a name resolves. Count is the
+// definition plus its usages: a name with neither is not a symbol, which is
+// exactly the negative this family needs to fail on.
+func refsQuery(ctx context.Context, client *http.Client, endpoint, repo, symbol string) (Result, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return Result{}, err
+	}
+	q := u.Query()
+	q.Set("symbol", symbol)
+	if repo != "" {
+		q.Set("repo", repo)
+	}
+	u.RawQuery = q.Encode()
+	body, err := get(ctx, client, u.String())
+	if err != nil {
+		return Result{}, err
+	}
+	var resp struct {
+		Definition *struct {
+			FilePath  string `json:"file_path"`
+			StartLine int    `json:"start_line"`
+			Signature string `json:"signature"`
+		} `json:"definition"`
+		UsageCount int `json:"usage_count"`
+		Usages     []struct {
+			FilePath string `json:"file_path"`
+			Line     int    `json:"line"`
+			Context  string `json:"context"`
+		} `json:"usages"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return Result{}, err
+	}
+	var out Result
+	if resp.Definition != nil {
+		out.Count++
+		out.Hits = append(out.Hits, Hit{Path: resp.Definition.FilePath, Line: resp.Definition.StartLine, Snippet: resp.Definition.Signature})
+	}
+	out.Count += resp.UsageCount
+	for _, u := range resp.Usages {
+		out.Hits = append(out.Hits, Hit{Path: u.FilePath, Line: u.Line, Snippet: u.Context})
+	}
+	return out, nil
+}
+
+func get(ctx context.Context, client *http.Client, target string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bobbin status %d", resp.StatusCode)
+	}
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(resp.Body); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // AppendEvent appends one evaluation record without affecting hook output.
@@ -288,24 +552,6 @@ func AppendEvent(path string, event Event) error {
 	}
 	_, err = f.Write(append(b, '\n'))
 	return err
-}
-
-func literalQuery(command string) (string, string, bool) {
-	fields := shellFields(command)
-	for i, field := range fields {
-		base := filepath.Base(strings.Trim(field, "'\""))
-		if base != "grep" && base != "rg" {
-			continue
-		}
-		for _, arg := range fields[i+1:] {
-			arg = strings.Trim(arg, "'\"")
-			if arg == "" || strings.HasPrefix(arg, "-") {
-				continue
-			}
-			return base, arg, true
-		}
-	}
-	return "", "", false
 }
 
 func shellFields(command string) []string {

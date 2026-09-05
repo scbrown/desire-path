@@ -5,3 +5,16 @@
 {"task_id":"beads-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/storage/dolt/circuit.go","line_min":60,"line_max":120},{"path":"internal/storage/dolt/circuit.go","line_min":140,"line_max":190},{"path":"internal/storage/dolt/circuit.go","line_min":220,"line_max":275}]}
 {"task_id":"cobra-misleading-001","adjudicated_before_campaign":true,"accepted":[{"path":"command.go","line_min":1120,"line_max":1200}]}
 {"task_id":"ripgrep-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"crates/core/main.rs","line_min":150,"line_max":215},{"path":"crates/ignore/src/walk.rs","line_min":660,"line_max":750}]}
+{"task_id":"dp-weak-002","adjudicated_before_campaign":true,"accepted":[{"path":"internal/cli/pave_correct.go","line_min":130,"line_max":175},{"path":"internal/cli/pave_correct.go","line_min":176,"line_max":190}]}
+{"task_id":"cobra-strong-001","adjudicated_before_campaign":true,"accepted":[{"path":"args.go","line_min":100,"line_max":120}]}
+{"task_id":"cobra-weak-001","adjudicated_before_campaign":true,"accepted":[{"path":"command.go","line_min":745,"line_max":820},{"path":"command.go","line_min":821,"line_max":860}]}
+{"task_id":"cobra-weak-002","adjudicated_before_campaign":true,"accepted":[{"path":"completions.go","line_min":160,"line_max":190},{"path":"completions.go","line_min":36,"line_max":45}]}
+{"task_id":"ripgrep-strong-001","adjudicated_before_campaign":true,"accepted":[{"path":"crates/printer/src/json.rs","line_min":487,"line_max":530}]}
+{"task_id":"ripgrep-weak-002","adjudicated_before_campaign":true,"accepted":[{"path":"crates/core/search.rs","line_min":125,"line_max":170},{"path":"crates/core/search.rs","line_min":25,"line_max":45}]}
+{"task_id":"ripgrep-misleading-001","adjudicated_before_campaign":true,"accepted":[{"path":"crates/core/flags/hiargs.rs","line_min":375,"line_max":440}]}
+{"task_id":"beads-strong-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/doltserver/doltserver.go","line_min":930,"line_max":1000}]}
+{"task_id":"beads-weak-002","adjudicated_before_campaign":true,"accepted":[{"path":"internal/doltserver/doltserver.go","line_min":160,"line_max":185}]}
+{"task_id":"beads-misleading-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/githooksenv/githooksenv.go","line_min":55,"line_max":115},{"path":"internal/githooksenv/githooksenv.go","line_min":30,"line_max":54}]}
+{"task_id":"gt-strong-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/cmd/polecat_spawn.go","line_min":66,"line_max":120}]}
+{"task_id":"gt-weak-002","adjudicated_before_campaign":true,"accepted":[{"path":"internal/config/loader.go","line_min":2685,"line_max":2760}]}
+{"task_id":"gt-misleading-001","adjudicated_before_campaign":true,"accepted":[{"path":"internal/cmd/crew_lifecycle.go","line_min":255,"line_max":330}]}

@@ -11,7 +11,19 @@ import (
 	"sort"
 )
 
+// Conditions is the MAIN matrix: five arms, unchanged since the pilot so the
+// campaigns stay comparable.
 var Conditions = []string{"bare-literal", "prompt-semantic", "replacement", "always-signpost", "gated-signpost"}
+
+// PayloadConditions is the payload arm, and it is deliberately NOT a member of
+// Conditions. It answers a different question — whether an agent takes an
+// ANSWER when it will not take a pointer — and its adoption metric is a
+// different measurement (see the campaign harness). Summing the two, or
+// planning them in one matrix, would report a rate that means nothing.
+//
+// Its comparator is always-signpost: the payload arm applies the same gate and
+// differs only in what it injects.
+var PayloadConditions = []string{"payload-signpost"}
 
 type Task struct {
 	TaskID      string   `json:"task_id"`
@@ -81,12 +93,17 @@ func Validate(t Task) error {
 	return nil
 }
 
-func Matrix(tasks []Task, models []string, replicates int, seed string) ([]Assignment, error) {
+// Matrix builds the blocked assignment matrix. conditions selects the arm;
+// pass nil for the main five.
+func Matrix(tasks []Task, models []string, replicates int, seed string, conditions []string) ([]Assignment, error) {
 	if len(models) < 2 {
 		return nil, fmt.Errorf("at least two model families are required")
 	}
 	if replicates < 1 {
 		return nil, fmt.Errorf("replicates must be positive")
+	}
+	if len(conditions) == 0 {
+		conditions = Conditions
 	}
 	var out []Assignment
 	for _, t := range tasks {
@@ -94,7 +111,7 @@ func Matrix(tasks []Task, models []string, replicates int, seed string) ([]Assig
 			if m == "" {
 				return nil, fmt.Errorf("empty model family")
 			}
-			for _, c := range Conditions {
+			for _, c := range conditions {
 				for r := 1; r <= replicates; r++ {
 					key := fmt.Sprintf("%s|%s|%s|%d", t.TaskID, m, c, r)
 					sum := sha256.Sum256([]byte(seed + "|" + key))

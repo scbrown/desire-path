@@ -86,7 +86,15 @@ func TestTheJobLandsOnTheGatewayRoute(t *testing.T) {
 	}
 }
 
+// The inline form is a SUPPORTED configuration, so it is tested with the file
+// form explicitly out of the way. Without that this test reads whatever the host
+// has configured: on any machine where DESIRE_PATH_METRICS_PASSWORD_FILE points
+// at a real secret it fails, and its failure message prints that secret into the
+// test log. An environment-dependent test that leaks a credential when it fails
+// is worse than no test, so the environment is pinned and the assertion never
+// echoes the password it read.
 func TestCredentialsInTheURLBecomeBasicAuth(t *testing.T) {
+	t.Setenv(EnvPasswordFile, "")
 	var user, pass string
 	var okAuth bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +106,7 @@ func TestCredentialsInTheURLBecomeBasicAuth(t *testing.T) {
 		t.Fatalf("push failed: %s", why)
 	}
 	if !okAuth || user != "u" || pass != "p" {
-		t.Fatalf("auth=%v user=%q pass=%q", okAuth, user, pass)
+		t.Fatalf("auth=%v user=%q password matched the URL: %v", okAuth, user, pass == "p")
 	}
 }
 
