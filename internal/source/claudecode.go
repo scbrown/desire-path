@@ -112,7 +112,7 @@ func (c *claudeCode) Install(opts InstallOpts) error {
 		}
 		settingsPath = filepath.Join(home, ".claude", "settings.json")
 	}
-	return installClaudeHooks(settingsPath)
+	return installClaudeHooks(settingsPath, opts.Env)
 }
 
 // IsInstalled checks whether dp hooks are already configured in the Claude
@@ -207,9 +207,12 @@ const dpLegacyHookCommand = "dp record --source claude-code"
 // Bash-scoped signposting prefetch/gating siblings, and the pave-correct
 // sibling on PostToolUseFailure. The dual-write in the ingest
 // pipeline ensures failures appear in both invocations and desires tables.
-func installClaudeHooks(settingsPath string) error {
+func installClaudeHooks(settingsPath string, env map[string]string) error {
 	settings, err := readClaudeSettings(settingsPath)
 	if err != nil {
+		return err
+	}
+	if err := mergeSettingsEnv(settings, env); err != nil {
 		return err
 	}
 
@@ -247,6 +250,31 @@ func installClaudeHooks(settingsPath string) error {
 	}
 
 	return writeClaudeSettings(settingsPath, settings)
+}
+
+// mergeSettingsEnv merges env into the settings' "env" object without
+// disturbing keys it did not write. The environment a hook needs travels with
+// the hook: installing one without the other is what produced a fleet-wide
+// signposting hook that reached nothing for weeks.
+func mergeSettingsEnv(settings claudeSettings, env map[string]string) error {
+	if len(env) == 0 {
+		return nil
+	}
+	existing := map[string]string{}
+	if raw, ok := settings["env"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &existing); err != nil {
+			return fmt.Errorf("parse settings env: %w", err)
+		}
+	}
+	for k, v := range env {
+		existing[k] = v
+	}
+	encoded, err := marshalJSONNoEscape(existing)
+	if err != nil {
+		return fmt.Errorf("marshal settings env: %w", err)
+	}
+	settings["env"] = encoded
+	return nil
 }
 
 // ReadClaudeSettings reads and parses the settings file, returning an empty

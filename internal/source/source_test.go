@@ -16,7 +16,7 @@ type stubSource struct {
 }
 
 func (s *stubSource) Name() string                    { return s.name }
-func (s *stubSource) Description() string              { return "stub source for testing" }
+func (s *stubSource) Description() string             { return "stub source for testing" }
 func (s *stubSource) Extract([]byte) (*Fields, error) { return &Fields{ToolName: "stub"}, nil }
 
 // claudeCodeSource is a test double that mimics a Claude Code source plugin.

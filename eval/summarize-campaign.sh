@@ -56,6 +56,17 @@ cat "${results[@]}" | jq -s '
 	      ran_stack_command: (map(select(.ran_stack_command)) | length),
 	      used_injected_location: (map(select(.used_injected_location)) | length),
 	      correctness_rate: rate((map(select(.correct)) | length); length),
+	      # Correctness among the assignments that actually SAW a signpost. The
+	      # all-runs rate mixes in runs the intervention never touched.
+	      correctness_when_shown: rate((map(select(.signpost_shown and .correct)) | length); $shown),
+	      # A NON-INFERENTIAL comparison between the two arms, which their own
+	      # adoption metrics cannot give: answering correctly after ONE search.
+	      # A pointer can only be taken by running a SECOND command, so a
+	      # pointer arm cannot score here; a payload arm can, because the answer
+	      # arrived with the first search. Rising here is the payload arm doing
+	      # the thing it exists to do, and it does not depend on believing that
+	      # a matched path means the payload was used.
+	      resolved_in_one_search: (map(select(.correct and .turns_to_locate == 1)) | length),
 	      signpost_precision: rate((map(select(.signpost_correct)) | length); $shown),
 	      avg_turns: mean(.turns_to_locate),
 	      avg_tokens: mean(.tokens_to_resolution)

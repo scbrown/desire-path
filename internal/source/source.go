@@ -53,6 +53,19 @@ type InstallOpts struct {
 	// → dp ingest) in addition to the default failure-only hooks. This can
 	// generate significant data since it fires on every tool call.
 	TrackAll bool
+
+	// Env is environment the installed hooks need, merged into the tool's
+	// settings alongside them.
+	//
+	// It exists because a hook and the configuration it depends on are one
+	// deployment, and splitting them produced a hook that ran on every pane of
+	// a fleet for weeks while reaching nothing: `dp signpost` with no
+	// DP_SIGNPOST_BOBBIN_URL falls back to a localhost default that nothing was
+	// listening on, and a hook that cannot reach its backend is silent by
+	// design — so there was no symptom to notice.
+	//
+	// Existing keys the installer did not write are preserved.
+	Env map[string]string
 }
 
 // Installer is an optional interface that source plugins can implement
