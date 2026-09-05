@@ -131,12 +131,17 @@ func reportMetrics(s store.Store, sourceName string, started time.Time, status i
 			fmt.Fprintf(os.Stderr, "metrics: store totals unavailable (%v) — producer group still pushed\n", err)
 			status = 0 // the INGEST succeeded; only the reading failed
 		} else {
-			l := map[string]string{"source": sourceName}
+			// NO source label: store.Stats is an unfiltered COUNT over the whole
+			// `desires` table, so these are GLOBAL totals. Labelling a global
+			// number with whichever source happened to trigger the push made it
+			// read as per-source AND destroyed the previous source's series on
+			// every push (measured, aegis-lu5502). Per-source counts already
+			// exist as st.TopSources if we ever want them.
 			samples = []metrics.Sample{
-				{Name: "desire_path_desires_total", Labels: l, Value: float64(st.TotalDesires)},
-				{Name: "desire_path_unique_paths", Labels: l, Value: float64(st.UniquePaths)},
-				{Name: "desire_path_desires_last_24h", Labels: l, Value: float64(st.Last24h)},
-				{Name: "desire_path_desires_last_7d", Labels: l, Value: float64(st.Last7d)},
+				{Name: "desire_path_desires_total", Value: float64(st.TotalDesires)},
+				{Name: "desire_path_unique_paths", Value: float64(st.UniquePaths)},
+				{Name: "desire_path_desires_last_24h", Value: float64(st.Last24h)},
+				{Name: "desire_path_desires_last_7d", Value: float64(st.Last7d)},
 			}
 		}
 	}

@@ -21,9 +21,21 @@
 // and had nothing to say:
 //
 //	desire_path_producer  every ingest, unconditionally: timestamp, duration,
-//	                      exit status. Stale => nothing is ingesting.
-//	desire_path           only on success: the store totals. Stale with a fresh
-//	                      producer => ingests are running and storing nothing.
+//	                      exit status, grouped by source. Stale => nothing is
+//	                      ingesting (per agent).
+//	desire_path           only on success: the store totals, UNLABELLED. Stale
+//	                      with a fresh producer => ingests are running and
+//	                      storing nothing.
+//
+// SOURCE IS A GROUPING KEY, NOT A BODY LABEL, AND THAT IS LOAD-BEARING. A POST to
+// the gateway replaces every sample sharing a metric NAME within the group, so two
+// sources writing the same metric name into one group destroy each other: measured
+// on the live gateway, pushing {source="claude-code"} then {source="codex"} left
+// ONLY codex. There are four source plugins (claude-code, codex, cursor, kiro), so
+// that is the ordinary case. Putting source in the URL grouping key gives each its
+// own group and both survive — also measured. It additionally keeps the series
+// identity stable per source, which matters because a churning label defeats an
+// alert's `for:` clock (aegis-m8omn).
 //
 // FAILS OPEN, LOUDLY. An unset variable, a missing credential or an unreachable
 // gateway must never fail an ingest — the ingest is the point and the metric is
@@ -97,7 +109,7 @@ func Exposition(samples []Sample) string {
 
 // Push sends one job's exposition to the gateway. It never returns a fatal
 // error; the string is the reason, for the caller to print.
-func Push(job, body, gateway string) (bool, string) {
+func Push(job, body, gateway string, grouping map[string]string) (bool, string) {
 	gateway = strings.TrimSpace(gateway)
 	if gateway == "" {
 		return false, EnvVar + " is unset — nothing pushed (set it to enable metrics)"
@@ -106,10 +118,21 @@ func Push(job, body, gateway string) (bool, string) {
 	if err != nil || u.Host == "" {
 		return false, fmt.Sprintf("%s is not a usable URL (%v) — nothing pushed", EnvVar, err)
 	}
+	// GROUPING KEY, not a body label — see the package comment. Sorted so the URL
+	// is deterministic; PathEscape because a source name reaches this from config.
+	path := strings.TrimRight(u.Path, "/") + "/metrics/job/" + url.PathEscape(job)
+	gkeys := make([]string, 0, len(grouping))
+	for k := range grouping {
+		gkeys = append(gkeys, k)
+	}
+	sort.Strings(gkeys)
+	for _, k := range gkeys {
+		path += "/" + url.PathEscape(k) + "/" + url.PathEscape(grouping[k])
+	}
 	target := &url.URL{
 		Scheme: u.Scheme,
 		Host:   u.Host,
-		Path:   strings.TrimRight(u.Path, "/") + "/metrics/job/" + url.PathEscape(job),
+		Path:   path,
 	}
 	if target.Scheme == "" {
 		target.Scheme = "http"
@@ -141,16 +164,16 @@ func Push(job, body, gateway string) (bool, string) {
 // totals. Never fatal; every outcome is printed to w.
 func Report(w *os.File, source string, totals []Sample, started time.Time, status int) {
 	gateway := os.Getenv(EnvVar)
-	labels := map[string]string{"source": source}
 	now := time.Now()
 
 	// Unconditional: its whole job is to separate "did not run" from "ran and
-	// stored nothing".
+	// stored nothing". `source` is the GROUPING KEY, so each agent keeps its own
+	// liveness series instead of the four of them clobbering one another.
 	_, why := Push(jobProducer, Exposition([]Sample{
-		{Name: "desire_path_producer_run_timestamp_seconds", Labels: labels, Value: float64(now.UnixMilli()) / 1000},
-		{Name: "desire_path_producer_duration_seconds", Labels: labels, Value: now.Sub(started).Seconds()},
-		{Name: "desire_path_producer_exit_status", Labels: labels, Value: float64(status)},
-	}), gateway)
+		{Name: "desire_path_producer_run_timestamp_seconds", Value: float64(now.UnixMilli()) / 1000},
+		{Name: "desire_path_producer_duration_seconds", Value: now.Sub(started).Seconds()},
+		{Name: "desire_path_producer_exit_status", Value: float64(status)},
+	}), gateway, map[string]string{"source": source})
 	fmt.Fprintf(w, "metrics: %s\n", why)
 
 	if status != 0 {
@@ -158,6 +181,8 @@ func Report(w *os.File, source string, totals []Sample, started time.Time, statu
 			"(the producer group carries the failure)\n")
 		return
 	}
-	_, why = Push(jobSamples, Exposition(totals), gateway)
+	// The totals are GLOBAL (store.Stats is an unfiltered COUNT over `desires`),
+	// so they carry NO source label and NO grouping key: one group, one truth.
+	_, why = Push(jobSamples, Exposition(totals), gateway, nil)
 	fmt.Fprintf(w, "metrics: %s\n", why)
 }
