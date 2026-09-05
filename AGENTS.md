@@ -19,7 +19,8 @@ internal/        Private packages - not importable by external code.
   ingest/        Raw payload → Invocation conversion and persistence.
   record/        Stdin JSON parsing and desire recording.
   analyze/       Similarity engine for tool name suggestions.
-  signpost/      PostToolUse gating, Bobbin pointer emission, eval JSONL.
+  signpost/      PostToolUse gating, intent discovery, stack pointer/payload
+                 emission, eval JSONL.
   eval/          Ground-truth validation and blocked assignment matrices.
   config/        Configuration file (~/.dp/config.toml) management.
   cli/           Cobra command definitions + table formatting.
@@ -39,6 +40,48 @@ Defines the `Source` plugin interface for extracting structured fields from raw 
 #### ingest
 
 Bridges source extraction and storage. The `Ingest` function looks up a registered source plugin by name, calls `Extract` on raw bytes, converts the resulting `Fields` into a `model.Invocation` (auto-generating UUID and timestamp), and persists it via `store.RecordInvocation`. This is the single entry point for recording tool call data from any source.
+
+#### signpost
+
+Observes completed Bash searches on PostToolUse and, when the result is weak,
+offers the stack instead. Two things it must never do: modify the tool call, or
+take longer than the 150 ms hook contract. Both are structural — the hook only
+ever emits `additionalContext`, and every failure path returns silence.
+
+**Intent families.** `DiscoverIntent` parses one observed command into an
+`Intent`. There are four families, each a parser plus a predicate plus its own
+evaluation row:
+
+| family | trigger | stack command | route |
+|---|---|---|---|
+| `literal-search` | `grep`/`rg` PATTERN | `bobbin search` | `/search` |
+| `file-find` | `find … -name PAT` | `bobbin search` | `/search` |
+| `history-search` | `git log -S`/`-G`/`--grep` | `bobbin search --type commit` | `/search?type=commit` |
+| `symbol-search` | a bare identifier that RESOLVES | `yupana callers` | `/refs` |
+
+`symbol-search` is promoted by **resolution, not by the parse** — an identifier
+that resolves nowhere is just a string and is searched as one. That fallback is
+a second round trip, so it is skipped when the remaining budget cannot pay for
+it: the contract outranks the upgrade. It is also the one family whose check and
+whose pointer come from different tools (bobbin resolves it, yupana is pointed
+at), which is stated in the code rather than hidden.
+
+**Pointer vs payload.** By default a signpost names a COMMAND. Under a payload
+condition (or `DP_SIGNPOST_PAYLOAD=1`) it injects the RESULT instead — top-N
+locations with one-line snippets, size-capped. A count with no locations
+degrades to a pointer rather than emitting an empty answer, which would read to
+the model as a failed search.
+
+The two arms' adoption metrics are **not the same measurement** — a pointer is
+adopted by being RUN, a payload by being USED — so they are planned separately
+(`dp eval plan --arm payload`), every result row carries `adoption_kind`, and
+`eval.Score` refuses to aggregate a cell whose rows disagree about the kind.
+
+**The prefetch resolves the family.** `signpost-prefetch` runs on PreToolUse
+with a 5 s budget and writes the resolved family and hits into the warm cache;
+PostToolUse adopts that resolution. This is the only way the symbol family can be
+delivered inside 150 ms, and it is why `CacheKey` is keyed on repo and query but
+NOT on family — the family is an output of the lookup, not an input to it.
 
 ## Documentation Hygiene
 
