@@ -296,6 +296,23 @@ func TestInitCmdJSON(t *testing.T) {
 	if result["source"] != "claude-code" {
 		t.Errorf("source = %v, want %q", result["source"], "claude-code")
 	}
+
+	// The empty settings path resolves through os.UserHomeDir(), so this test
+	// writes a real settings file somewhere. Assert it landed inside the
+	// isolated HOME: without that assertion the isolation can be removed, or
+	// silently stop working, and the only symptom is that somebody's live agent
+	// configuration changes during `go test`.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	written := filepath.Join(home, ".claude", "settings.json")
+	if _, err := os.Stat(written); err != nil {
+		t.Fatalf("expected the installer to write %s: %v", written, err)
+	}
+	if !strings.HasPrefix(home, os.TempDir()) {
+		t.Fatalf("HOME is %s, not an isolated temporary directory: this test just wrote %s", home, written)
+	}
 }
 
 func TestPathsCmdEmptyJSON(t *testing.T) {
