@@ -1,0 +1,15 @@
+{"command":"find . -name '*_completions.go'","repo":"cobra","tool":"find","result_cardinality":5,"predicate":"none"}
+{"command":"find . -name 'flag_groups*.go'","repo":"cobra","tool":"find","result_cardinality":2,"predicate":"none"}
+{"command":"find . -path '*/cobra*' -name 'args.go'","repo":"cobra","tool":"find","result_cardinality":0,"predicate":"null"}
+{"command":"find . -name 'pave_*.go'","repo":"desire-path","tool":"find","result_cardinality":5,"predicate":"none"}
+{"command":"find . -name '*signpost*'","repo":"desire-path","tool":"find","result_cardinality":5,"predicate":"none"}
+{"command":"find . -name 'claudecode*.go'","repo":"desire-path","tool":"find","result_cardinality":2,"predicate":"none"}
+{"command":"find . -path '*storage/dolt*' -name 'circuit*.go'","repo":"beads","tool":"find","result_cardinality":2,"predicate":"none"}
+{"command":"find . -name 'doltserver*.go'","repo":"beads","tool":"find","result_cardinality":12,"predicate":"none"}
+{"command":"find . -name 'githooksenv*.go'","repo":"beads","tool":"find","result_cardinality":2,"predicate":"none"}
+{"command":"find . -name 'escalate*.go'","repo":"gastown","tool":"find","result_cardinality":6,"predicate":"none"}
+{"command":"find . -name 'polecat_spawn.go'","repo":"gastown","tool":"find","result_cardinality":1,"predicate":"none"}
+{"command":"find . -name 'crew_lifecycle.go'","repo":"gastown","tool":"find","result_cardinality":1,"predicate":"none"}
+{"command":"find . -name 'hiargs.rs'","repo":"ripgrep","tool":"find","result_cardinality":1,"predicate":"none"}
+{"command":"find . -path '*printer*' -name 'json.rs'","repo":"ripgrep","tool":"find","result_cardinality":1,"predicate":"none"}
+{"command":"find . -name 'walk.rs'","repo":"ripgrep","tool":"find","result_cardinality":2,"predicate":"none"}

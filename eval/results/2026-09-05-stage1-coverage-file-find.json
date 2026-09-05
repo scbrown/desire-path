@@ -1,0 +1,33 @@
+{
+  "arm": "always-signpost-direct",
+  "condition": "always-signpost",
+  "search_mode": null,
+  "replayed": 15,
+  "timeout_ms": 150,
+  "prefetch_gap_ms": null,
+  "logged": 15,
+  "not_gated": 0,
+  "eligible": 15,
+  "shown": 15,
+  "warm_cache_hits": 0,
+  "timed_out": 0,
+  "zero_candidate": 0,
+  "coverage": 1,
+  "shown_latency_ms": [
+    69,
+    73,
+    73,
+    75,
+    76,
+    76,
+    77,
+    79,
+    82,
+    83,
+    84,
+    85,
+    91,
+    92,
+    125
+  ]
+}

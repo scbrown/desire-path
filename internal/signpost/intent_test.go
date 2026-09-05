@@ -14,6 +14,8 @@ func TestDiscoverIntentFamilies(t *testing.T) {
 		{"find -name", "find . -name '*_handler.go'", FamilyFileFind, "_handler.go", "", true},
 		{"find -iname strips dirs", "find . -iname 'internal/store*.go'", FamilyFileFind, "store.go", "", true},
 		{"find with no name predicate", "find . -type f -mtime -1", "", "", "", false},
+		{"-name beats an earlier -path", "find . -path '*/cobra*' -name 'args.go'", FamilyFileFind, "args.go", "", true},
+		{"a bare -path is the search", "find . -path '*internal/store*'", FamilyFileFind, "store", "", true},
 		{"find -name too short after cleaning", "find . -name '*.go'", "", "", "", false},
 		{"git log pickaxe attached", "git log -SErrCircuitOpen", FamilyHistory, "ErrCircuitOpen", "", true},
 		{"git log pickaxe detached", "git log -S 'circuit breaker' --oneline", FamilyHistory, "circuit breaker", "", true},

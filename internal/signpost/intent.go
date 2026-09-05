@@ -86,19 +86,30 @@ func parseLiteral(tool string, rest []string) (Intent, bool) {
 	return Intent{}, false
 }
 
-// nameFlags are the find predicates that carry a filename pattern. -path and
-// -wholename match the whole path, so their value is cleaned the same way.
-var nameFlags = map[string]bool{
-	"-name": true, "-iname": true, "-path": true, "-ipath": true, "-wholename": true,
-}
+// nameFlags carry the filename being looked for. pathFlags match the whole
+// path and are usually a DIRECTORY FILTER on that search, not the search
+// itself: `find . -path '*/cobra*' -name args.go` is asking about args.go, and
+// taking -path first turns the query into the name of a directory. Measured on
+// the family workload before this precedence existed — that row extracted
+// "cobra" and asked the index about the repository instead of the file.
+var nameFlags = map[string]bool{"-name": true, "-iname": true}
+var pathFlags = map[string]bool{"-path": true, "-ipath": true, "-wholename": true}
 
 func parseFind(rest []string) (Intent, bool) {
+	if in, ok := findPatternFor(rest, nameFlags); ok {
+		return in, true
+	}
+	// No -name at all: a bare -path IS the search, so it is used rather than
+	// dropped.
+	return findPatternFor(rest, pathFlags)
+}
+
+func findPatternFor(rest []string, flags map[string]bool) (Intent, bool) {
 	for i, arg := range rest {
-		if !nameFlags[strings.Trim(arg, "'\"")] || i+1 >= len(rest) {
+		if !flags[strings.Trim(arg, "'\"")] || i+1 >= len(rest) {
 			continue
 		}
-		pattern := strings.Trim(rest[i+1], "'\"")
-		query := cleanNamePattern(pattern)
+		query := cleanNamePattern(strings.Trim(rest[i+1], "'\""))
 		if query == "" {
 			continue
 		}
