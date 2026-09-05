@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"time"
 
+	"github.com/scbrown/desire-path/internal/pave"
 	"github.com/scbrown/desire-path/internal/signpost"
 	"github.com/spf13/cobra"
 )
@@ -57,11 +59,27 @@ func signpostCacheDir() string {
 }
 
 func runSignpostPrefetch(_ *cobra.Command, _ []string) error {
-	if os.Getenv("DP_SIGNPOST_PREFETCH") == "0" {
-		return nil
-	}
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
+		return nil
+	}
+
+	// DELIVER ANY PARKED CORRECTION FIRST, and unconditionally.
+	//
+	// This runs before the prefetch gate and outside it on purpose. A
+	// correction is owed to the agent whatever its next command happens to be —
+	// it is not about this call, it is about the failed one before it — so
+	// gating it on the prefetch being enabled, or on this command looking like
+	// a search, would drop it for most calls.
+	//
+	// PostToolUseFailure is where the correction is produced and where it
+	// cannot be delivered: that event's additionalContext is discarded by the
+	// harness (aegis-c2g1s5). PreToolUse injection is proven to reach the model
+	// — every crew pane sees hook context here on each Bash call — so the
+	// correction is carried across one turn and delivered where it lands.
+	deliverParkedCorrection(raw)
+
+	if os.Getenv("DP_SIGNPOST_PREFETCH") == "0" {
 		return nil
 	}
 	_, intent, ok := signpost.PrefetchRequest(raw)
@@ -105,6 +123,36 @@ func runSignpostFetch(cmd *cobra.Command, _ []string) error {
 		_ = signpost.WriteWarmResult(signpostCacheDir(), fetchID, resolved.Family, result)
 	}
 	return nil
+}
+
+// deliverParkedCorrection emits a correction parked by a previous failure, once.
+// It writes nothing when there is none, which is the overwhelmingly common case,
+// and it never fails the hook.
+func deliverParkedCorrection(raw []byte) {
+	var p struct {
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(raw, &p) != nil || p.SessionID == "" {
+		return
+	}
+	ttl := time.Duration(envInt("DP_PAVE_PENDING_TTL_MS", int(pave.DefaultTTL/time.Millisecond))) * time.Millisecond
+	pending, ok := pave.Take(pave.Dir(), p.SessionID, ttl)
+	if !ok {
+		return
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	out.HookSpecificOutput.HookEventName = "PreToolUse"
+	out.HookSpecificOutput.AdditionalContext = pending.Render()
+	b, err := json.Marshal(out)
+	if err != nil {
+		return
+	}
+	_, _ = os.Stdout.Write(append(b, '\n'))
 }
 
 func runSignpost(cmd *cobra.Command, _ []string) error {

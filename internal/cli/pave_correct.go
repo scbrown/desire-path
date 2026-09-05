@@ -13,6 +13,7 @@ import (
 
 	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/model"
+	"github.com/scbrown/desire-path/internal/pave"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,7 @@ func init() {
 
 // postFailurePayload is the PostToolUseFailure hook JSON from Claude Code.
 type postFailurePayload struct {
+	SessionID string                 `json:"session_id"`
 	ToolName  string                 `json:"tool_name"`
 	ToolInput map[string]interface{} `json:"tool_input"`
 	Error     string                 `json:"error"`
@@ -131,6 +133,7 @@ func runPaveCorrect(r io.Reader) error {
 	correctionMsg := strings.Join(contextParts, "\n\n")
 
 	// Check if auto_correct is enabled.
+	// (deferred delivery is arranged after the message is final, below)
 	cfg, cfgErr := config.LoadFrom(configPath)
 	autoCorrect := cfgErr == nil && cfg.AutoCorrect
 
@@ -139,6 +142,7 @@ func runPaveCorrect(r io.Reader) error {
 		if correctedCmd != "" {
 			correctionMsg += fmt.Sprintf("\n\n**Corrected command:** `%s`", correctedCmd)
 		}
+		deferCorrection(payload, correctionMsg)
 		out := postFailureOutput{
 			HookSpecificOutput: postFailureSpecific{
 				AdditionalContext: correctionMsg,
@@ -164,12 +168,30 @@ func runPaveCorrect(r io.Reader) error {
 		sb.WriteString(fmt.Sprintf("\nResult:\n```\n%s\n```", result))
 	}
 
+	deferCorrection(payload, sb.String())
 	out := postFailureOutput{
 		HookSpecificOutput: postFailureSpecific{
 			AdditionalContext: sb.String(),
 		},
 	}
 	return json.NewEncoder(os.Stdout).Encode(out)
+}
+
+// deferCorrection stores the correction for delivery on the agent's next
+// PreToolUse call.
+//
+// The additionalContext returned alongside it is NOT redundant belt-and-braces:
+// it is the correct output for this hook, and it is what a harness that
+// surfaces PostToolUseFailure context would use. On Claude Code that text is
+// discarded (aegis-c2g1s5), which is why the same message is also parked here
+// and injected one turn later, where delivery is proven. Neither path is a
+// fallback for the other; they serve different harnesses.
+//
+// Failures here are swallowed deliberately: a hook that cannot park a
+// correction must still not disturb the tool call it observed.
+func deferCorrection(payload postFailurePayload, message string) {
+	command, _ := payload.ToolInput["command"].(string)
+	_ = pave.Store(pave.Dir(), payload.SessionID, command, message)
 }
 
 // executeCommand runs a shell command and returns combined stdout+stderr output.
