@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/scbrown/desire-path/internal/cmdparse"
@@ -127,9 +128,29 @@ type correction struct {
 	description string
 }
 
+// ruleOrder decides which kinds of rule get to look at a command first.
+//
+// This is NOT cosmetic. Every kind except "command" matches on the segment's
+// program name, and "command" REPLACES that name -- so if a substitution runs
+// first, every other rule written for the old name silently stops matching. The
+// two rules mined from the real corpus are exactly that pair: `bd` -> `br`, and
+// `bd comment` -> `comments add`. Applied narrow-first they compose into
+// `br comments add`; applied in the other order the second one never fires, and
+// nothing anywhere reports that a rule was skipped.
+var ruleOrder = map[string]int{"flag": 0, "literal": 1, "regex": 2, "recipe": 3, "command": 4}
+
 // applyRules applies all matching rules to the tool input and returns corrections.
 func applyRules(toolInput map[string]interface{}, rules []model.Alias) []correction {
 	var corrections []correction
+
+	// Narrow kinds first, and stably: the DB's row order must not decide what a
+	// correction comes out as.
+	ordered := make([]model.Alias, len(rules))
+	copy(ordered, rules)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ruleOrder[ordered[i].MatchKind] < ruleOrder[ordered[j].MatchKind]
+	})
+	rules = ordered
 
 	// Group rules by param so we can compose multiple corrections on the same parameter.
 	paramValues := make(map[string]string)

@@ -2,7 +2,8 @@
 set -u
 
 usage() {
-	printf '%s\n' 'usage: eval/run-campaign.sh --assignments FILE --acceptance-sets FILE --corpus-root DIR --artifacts DIR --dp PATH --bobbin-server URL [--signpost-timeout-ms N] [--limit N]'
+	printf '%s\n' 'usage: eval/run-campaign.sh --assignments FILE --acceptance-sets FILE --corpus-root DIR --artifacts DIR --dp PATH --bobbin-server BASE_URL [--signpost-timeout-ms N] [--limit N]'
+	printf '%s\n' '--bobbin-server is the BASE url (no /search): the hook route is derived from it, and the agent bobbin is pointed at it directly.'
 }
 
 assignments=
@@ -37,6 +38,32 @@ for command in jq codex claude bobbin; do
 	command -v "$command" >/dev/null || { printf 'missing command: %s\n' "$command" >&2; exit 2; }
 done
 [[ -x $dp_bin ]] || { printf 'dp is not executable: %s\n' "$dp_bin" >&2; exit 2; }
+
+# PREFLIGHT, FAIL CLOSED. A corpus the backend does not index answers every
+# query with zero, and an agent that ADOPTS a signpost into an empty index gets
+# nothing back -- which scores as "the intervention does not help" when what was
+# actually measured is a backend that cannot see the repo. Stage 0 found exactly
+# this: the shared fleet backend holds 3 of the 5 pinned corpora. So every
+# corpus is asked a real question before any quota is spent, and a misspelled
+# repo is asked too, because a backend that answers EVERYTHING is not a control.
+preflight_backend() {
+	local failed=0 name count
+	while IFS= read -r name; do
+		count=$(curl -sf -m 20 --get --data-urlencode 'q=error handling' --data 'limit=1' \
+			--data "repo=$name" "$bobbin_server/search" | jq -r '.count // 0') || count=unreachable
+		printf 'preflight %-14s %s\n' "$name" "$count" >&2
+		[[ $count =~ ^[1-9] ]] || failed=1
+	done < <(jq -r '.[].repo | split("/") | last' eval/corpora.json)
+	count=$(curl -sf -m 20 --get --data-urlencode 'q=error handling' --data 'limit=1' \
+		--data 'repo=not_a_real_corpus' "$bobbin_server/search" | jq -r '.count // 0') || count=unreachable
+	printf 'preflight %-14s %s (negative control, must be 0)\n' "not_a_real_corpus" "$count" >&2
+	[[ $count == 0 ]] || failed=1
+	return $failed
+}
+preflight_backend || {
+	printf 'backend cannot see every pinned corpus (or answered the negative control) -- not spending the envelope\n' >&2
+	exit 3
+}
 
 mkdir -p "$artifacts/raw" "$artifacts/events" "$artifacts/settings" "$artifacts/replacement-bin"
 lock=$artifacts/.running
@@ -145,7 +172,14 @@ while IFS= read -r assignment; do
 	hook_cmd=$(printf 'env DP_SIGNPOST_CONDITION=%q DP_SIGNPOST_TASK_ID=%q DP_SIGNPOST_MODEL_FAMILY=%q DP_SIGNPOST_REPO=%q DP_SIGNPOST_LOG=%q DP_SIGNPOST_BOBBIN_URL=%q DP_SIGNPOST_TIMEOUT_MS=%q %q signpost' "$condition" "$(jq -r .task_id <<<"$assignment")" "$model" "$repo" "$events" "$bobbin_server/search" "$signpost_timeout_ms" "$dp_bin")
 	prefetch_cmd=$(printf 'env DP_SIGNPOST_REPO=%q DP_SIGNPOST_BOBBIN_URL=%q %q signpost-prefetch' "$repo" "$bobbin_server/search" "$dp_bin")
 
-	env_args=(env "DP_EVAL_BOBBIN_BIN=$bobbin_bin" "DP_EVAL_BOBBIN_SERVER=$bobbin_server" "DP_EVAL_REPO=$repo")
+	# BOBBIN_SERVER points the AGENT's own bobbin at the evaluation index. Without
+	# it the agent's `bobbin search` goes wherever this host's bobbin is
+	# configured to go, which for two of the five pinned corpora is a backend
+	# that does not index them: adoption would then be measured against an index
+	# that cannot answer, and the arm would look useless for a reason that has
+	# nothing to do with signposting.
+	env_args=(env "DP_EVAL_BOBBIN_BIN=$bobbin_bin" "DP_EVAL_BOBBIN_SERVER=$bobbin_server" \
+		"DP_EVAL_REPO=$repo" "BOBBIN_SERVER=$bobbin_server")
 	if [[ $condition == replacement ]]; then
 		env_args+=("PATH=$artifacts/replacement-bin:$PATH")
 	fi

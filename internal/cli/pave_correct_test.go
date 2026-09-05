@@ -240,3 +240,33 @@ func TestPaveCorrectCommandRegistered(t *testing.T) {
 		t.Fatalf("pave-correct help: %v", err)
 	}
 }
+
+// The two rules mined from the real desire corpus both key on the command name
+// `bd`, and one of them REPLACES that name. Applied in DB order they compose or
+// not depending on which row came back first, and the failure is silent: the
+// caller gets a plausible half-correction. Both orders must produce the same
+// fully-composed command.
+func TestRulesComposeRegardlessOfStoredOrder(t *testing.T) {
+	substitute := model.Alias{Tool: "Bash", Param: "command", MatchKind: "command", Command: "bd", From: "bd", To: "br"}
+	literal := model.Alias{Tool: "Bash", Param: "command", MatchKind: "literal", Command: "bd", From: "comment", To: "comments add"}
+	input := map[string]interface{}{"command": "bd comment aegis-1 -m hello"}
+	want := "br comments add aegis-1 -m hello"
+
+	for _, tc := range []struct {
+		name  string
+		rules []model.Alias
+	}{
+		{"narrow first", []model.Alias{literal, substitute}},
+		{"substitution first", []model.Alias{substitute, literal}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := applyRules(input, tc.rules)
+			if len(got) != 1 {
+				t.Fatalf("got %d corrections, want 1: %+v", len(got), got)
+			}
+			if got[0].newValue != want {
+				t.Fatalf("corrected to %q, want %q", got[0].newValue, want)
+			}
+		})
+	}
+}
