@@ -36,12 +36,12 @@ func (f *fakeStore) SetAlias(context.Context, model.Alias) error { return nil }
 func (f *fakeStore) GetAlias(context.Context, string, string, string, string, string) (*model.Alias, error) {
 	return nil, nil
 }
-func (f *fakeStore) GetAliases(context.Context) ([]model.Alias, error)                       { return nil, nil }
+func (f *fakeStore) GetAliases(context.Context) ([]model.Alias, error) { return nil, nil }
 func (f *fakeStore) DeleteAlias(context.Context, string, string, string, string, string) (bool, error) {
 	return false, nil
 }
 func (f *fakeStore) GetRulesForTool(context.Context, string) ([]model.Alias, error) { return nil, nil }
-func (f *fakeStore) Stats(context.Context) (store.Stats, error)        { return store.Stats{}, nil }
+func (f *fakeStore) Stats(context.Context) (store.Stats, error)                     { return store.Stats{}, nil }
 func (f *fakeStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) {
 	return &store.InspectResult{}, nil
 }
@@ -72,9 +72,9 @@ func (f *fakeStore) ListRecoveries(context.Context, time.Time, int) ([]model.Rec
 func (f *fakeStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error) {
 	return nil, nil
 }
-func (f *fakeStore) SetDocMapping(context.Context, model.DocMapping) error { return nil }
+func (f *fakeStore) SetDocMapping(context.Context, model.DocMapping) error      { return nil }
 func (f *fakeStore) GetDocMappings(context.Context) ([]model.DocMapping, error) { return nil, nil }
-func (f *fakeStore) DeleteDocMapping(context.Context, string) (bool, error) { return false, nil }
+func (f *fakeStore) DeleteDocMapping(context.Context, string) (bool, error)     { return false, nil }
 func (f *fakeStore) SuggestDocs(context.Context, string, string) ([]model.DocMapping, error) {
 	return nil, nil
 }
@@ -234,8 +234,8 @@ func TestRecord(t *testing.T) {
 			},
 		},
 		{
-			name:  "claude code hook input",
-			input: `{"session_id":"abc123","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"nonexistent-cmd"},"tool_use_id":"toolu_01xyz","error":"Command exited with non-zero status code 1","cwd":"/home/user/project","transcript_path":"/tmp/transcript","permission_mode":"default"}`,
+			name:   "claude code hook input",
+			input:  `{"session_id":"abc123","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"nonexistent-cmd"},"tool_use_id":"toolu_01xyz","error":"Command exited with non-zero status code 1","cwd":"/home/user/project","transcript_path":"/tmp/transcript","permission_mode":"default"}`,
 			source: "claude-code",
 			check: func(t *testing.T, d model.Desire) {
 				if d.ToolName != "Bash" {

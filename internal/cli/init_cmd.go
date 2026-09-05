@@ -21,6 +21,7 @@ var (
 	initSettings     string
 	initSignpostURL  string
 	initSignpostLog  string
+	initSearchMode   string
 	initSkipURLCheck bool
 )
 
@@ -76,7 +77,7 @@ flag exists to repair.`,
 			return fmt.Errorf("specify a source with --source NAME (available: %s)", strings.Join(names, ", "))
 		}
 
-		env, err := signpostEnv(initSignpostURL, initSignpostLog, initSkipURLCheck)
+		env, err := signpostEnv(initSignpostURL, initSignpostLog, initSearchMode, initSkipURLCheck)
 		if err != nil {
 			return err
 		}
@@ -93,6 +94,7 @@ func init() {
 	initCmd.Flags().StringVar(&initSettings, "settings", "", "path to settings file (default: source-specific)")
 	initCmd.Flags().StringVar(&initSignpostURL, "signpost-url", "", "base URL of the search backend the signpost hook should query (its /search route is derived); verified before it is written")
 	initCmd.Flags().StringVar(&initSignpostLog, "signpost-log", "", "path for the signpost event log (default ~/.local/log/dp-signpost-events.jsonl; \"-\" disables it)")
+	initCmd.Flags().StringVar(&initSearchMode, "signpost-search-mode", "", "search mode the signpost hook asks for: hybrid, semantic or keyword (default: the backend's own default)")
 	initCmd.Flags().BoolVar(&initSkipURLCheck, "skip-signpost-url-check", false, "write --signpost-url without verifying it answers (for installing against a backend that is not up yet)")
 	rootCmd.AddCommand(initCmd)
 }
@@ -106,7 +108,7 @@ func init() {
 // That configuration ran on every pane of a fleet for weeks. An install is the
 // one moment where the mistake is both detectable and cheap to fix, so it fails
 // closed here rather than being discovered by measuring adoption later.
-func signpostEnv(rawURL, logPath string, skipCheck bool) (map[string]string, error) {
+func signpostEnv(rawURL, logPath, searchMode string, skipCheck bool) (map[string]string, error) {
 	if rawURL == "" {
 		return nil, nil
 	}
@@ -144,6 +146,25 @@ func signpostEnv(rawURL, logPath string, skipCheck bool) (map[string]string, err
 	}
 	if logPath != "-" {
 		env["DP_SIGNPOST_LOG"] = logPath
+	}
+
+	// The search mode is a property of the INDEX's content, not a global
+	// preference, which is why it is a flag and not a default.
+	//
+	// On Go and Rust source the two modes are within ~5 ms of each other, and
+	// the shipped hook states no mode at all. On a resident index holding
+	// docs-and-IaC repositories they are not close: measured paired and
+	// interleaved, 16 pairs over two repositories and four queries, hybrid ran
+	// 164-197 ms against semantic's 51-70 ms on the heaviest repo, with
+	// IDENTICAL candidate counts and the same result set in a different order.
+	// The keyword arm of hybrid is the whole difference. At 150 ms that is not
+	// a tuning preference, it is the difference between delivering and not.
+	switch searchMode {
+	case "":
+	case "hybrid", "semantic", "keyword":
+		env["DP_SIGNPOST_SEARCH_MODE"] = searchMode
+	default:
+		return nil, fmt.Errorf("--signpost-search-mode %q is not one of hybrid, semantic, keyword", searchMode)
 	}
 	return env, nil
 }

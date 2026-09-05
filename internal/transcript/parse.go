@@ -14,10 +14,10 @@ import (
 // Turn represents one human→model→human cycle in a session.
 type Turn struct {
 	SessionID  string
-	Index      int       // 0-based turn number in session
+	Index      int // 0-based turn number in session
 	StartedAt  time.Time
-	DurationMs int       // from turn_duration system event, 0 if absent
-	Steps      []Step    // tool calls in execution order
+	DurationMs int    // from turn_duration system event, 0 if absent
+	Steps      []Step // tool calls in execution order
 }
 
 // Step represents one tool invocation within a turn.
@@ -50,8 +50,8 @@ type event struct {
 
 // messageEnvelope is the shape of the message field on user/assistant events.
 type messageEnvelope struct {
-	Role    string            `json:"role"`
-	Content json.RawMessage   `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
 }
 
 // contentBlock represents one block in an assistant message's content array.
@@ -135,11 +135,11 @@ func Parse(r io.Reader) ([]Turn, error) {
 				continue
 			}
 			step := pendingStep{
-				toolName:  block.Name,
-				toolUseID: block.ID,
-				input:     block.Input,
+				toolName:   block.Name,
+				toolUseID:  block.ID,
+				input:      block.Input,
 				parentUUID: parentOf(e),
-				uuid:      e.UUID,
+				uuid:       e.UUID,
 			}
 			currentTurn.steps = append(currentTurn.steps, step)
 

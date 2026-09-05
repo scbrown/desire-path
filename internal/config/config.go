@@ -19,15 +19,15 @@ const DefaultTurnLengthThreshold = 5
 
 // Config holds dp configuration settings.
 type Config struct {
-	DBPath               string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
-	DefaultSource        string   `toml:"default_source,omitempty" json:"default_source,omitempty"`
-	KnownTools           []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
-	TrackTools           []string `toml:"track_tools,omitempty" json:"track_tools,omitempty"`
-	DefaultFormat        string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
-	StoreMode            string   `toml:"store_mode,omitempty" json:"store_mode,omitempty"`
-	RemoteURL            string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
-	TurnLengthThreshold  int      `toml:"turn_length_threshold,omitempty" json:"turn_length_threshold,omitempty"`
-	AutoCorrect          bool     `toml:"auto_correct,omitempty" json:"auto_correct,omitempty"`
+	DBPath              string   `toml:"db_path,omitempty" json:"db_path,omitempty"`
+	DefaultSource       string   `toml:"default_source,omitempty" json:"default_source,omitempty"`
+	KnownTools          []string `toml:"known_tools,omitempty" json:"known_tools,omitempty"`
+	TrackTools          []string `toml:"track_tools,omitempty" json:"track_tools,omitempty"`
+	DefaultFormat       string   `toml:"default_format,omitempty" json:"default_format,omitempty"`
+	StoreMode           string   `toml:"store_mode,omitempty" json:"store_mode,omitempty"`
+	RemoteURL           string   `toml:"remote_url,omitempty" json:"remote_url,omitempty"`
+	TurnLengthThreshold int      `toml:"turn_length_threshold,omitempty" json:"turn_length_threshold,omitempty"`
+	AutoCorrect         bool     `toml:"auto_correct,omitempty" json:"auto_correct,omitempty"`
 }
 
 // EffectiveTurnLengthThreshold returns the configured threshold, or the default.
@@ -40,15 +40,15 @@ func (c *Config) EffectiveTurnLengthThreshold() int {
 
 // validKeys lists the allowed configuration keys.
 var validKeys = map[string]bool{
-	"auto_correct":           true,
-	"db_path":                true,
-	"default_source":         true,
-	"known_tools":            true,
-	"track_tools":            true,
-	"default_format":         true,
-	"store_mode":             true,
-	"remote_url":             true,
-	"turn_length_threshold":  true,
+	"auto_correct":          true,
+	"db_path":               true,
+	"default_source":        true,
+	"known_tools":           true,
+	"track_tools":           true,
+	"default_format":        true,
+	"store_mode":            true,
+	"remote_url":            true,
+	"turn_length_threshold": true,
 }
 
 // ValidKeys returns the sorted list of valid configuration keys.

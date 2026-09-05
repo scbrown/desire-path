@@ -85,7 +85,24 @@ type payload struct {
 	ToolName     string          `json:"tool_name"`
 	ToolInput    json.RawMessage `json:"tool_input"`
 	ToolResponse json.RawMessage `json:"tool_response"`
+	Error        string          `json:"error"`
 	CWD          string          `json:"cwd"`
+}
+
+// hookEventName reports which event this payload came from. A failed tool call
+// carries an error and no response.
+//
+// THIS MATTERS MORE THAN IT LOOKS. A literal search that finds NOTHING exits
+// non-zero, so in production it is routed to PostToolUseFailure — and the null
+// predicate, the most valuable trigger signposting has ("your search found
+// nothing, try a semantic one"), was therefore unreachable on every crew pane.
+// Measured: the identical query run twice, once bare (exit 1) and once with
+// `|| true` (exit 0), produced ONE event, from the exit-0 run.
+func (p payload) hookEventName() string {
+	if len(p.ToolResponse) == 0 && p.Error != "" {
+		return "PostToolUseFailure"
+	}
+	return "PostToolUse"
 }
 
 // Hit is one stack answer: where it is, and enough of it to judge without
@@ -204,7 +221,7 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 	}
 
 	var out hookOutput
-	out.HookSpecificOutput.HookEventName = "PostToolUse"
+	out.HookSpecificOutput.HookEventName = p.hookEventName()
 	out.HookSpecificOutput.AdditionalContext = injected
 	b, err := json.Marshal(out)
 	return b, e, err

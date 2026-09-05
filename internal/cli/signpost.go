@@ -138,10 +138,19 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 }
 
 // searchMode selects the Bobbin search mode the hook asks for. Unset leaves the
-// backend default in place: on a warm resident index the modes are within ~5 ms
-// of each other and return identical candidate counts, so there is no measured
-// case for overriding it. The knob exists so a delivery arm can be pinned and
-// compared, not because a mode has been shown to be better.
+// backend default in place.
+//
+// WHICH MODE IS RIGHT DEPENDS ON WHAT THE INDEX HOLDS, and the earlier
+// measurement here was read as a general result when it was a corpus-specific
+// one. On the Go and Rust evaluation corpora the modes are within ~5 ms of each
+// other with identical candidate counts, so there was no case for overriding
+// the default. On the fleet's resident index — docs, YAML and Jinja rather than
+// source — they are not close: measured paired and interleaved, 16 pairs over
+// two repositories and four queries, hybrid ran 164-197 ms on the heaviest
+// repository against semantic's 51-70 ms, with identical candidate counts and
+// the same result set in a different order. The keyword arm of hybrid is the
+// entire difference. Against a 150 ms contract that is the difference between
+// delivering and not, so the resident deployment pins semantic and says why.
 func searchMode() string { return os.Getenv("DP_SIGNPOST_SEARCH_MODE") }
 
 func env(key, fallback string) string {

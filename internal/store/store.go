@@ -163,15 +163,15 @@ type InvocationOpts struct {
 
 // InvocationStatsResult holds summary statistics about stored invocations.
 type InvocationStatsResult struct {
-	Total       int            `json:"total"`
-	UniqueTools int            `json:"unique_tools"`
-	TopSources  []NameCount    `json:"top_sources"`
-	TopTools    []NameCount    `json:"top_tools"`
-	Last24h     int            `json:"last_24h"`
-	Last7d      int            `json:"last_7d"`
-	Last30d     int            `json:"last_30d"`
-	Earliest    time.Time      `json:"earliest"`
-	Latest      time.Time      `json:"latest"`
+	Total       int         `json:"total"`
+	UniqueTools int         `json:"unique_tools"`
+	TopSources  []NameCount `json:"top_sources"`
+	TopTools    []NameCount `json:"top_tools"`
+	Last24h     int         `json:"last_24h"`
+	Last7d      int         `json:"last_7d"`
+	Last30d     int         `json:"last_30d"`
+	Earliest    time.Time   `json:"earliest"`
+	Latest      time.Time   `json:"latest"`
 }
 
 // TurnOpts controls filtering for turn-related queries.

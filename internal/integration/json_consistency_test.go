@@ -56,7 +56,7 @@ func TestAllCommandsJSON(t *testing.T) {
 			args: []string{"similar", "read_file", "--json"},
 		},
 		{
-			name: "ingest",
+			name:  "ingest",
 			args:  []string{"ingest", "--source", "claude-code", "--json"},
 			stdin: []byte(`{"tool_name":"Read","session_id":"s1","cwd":"/tmp","error":"unknown tool"}`),
 		},

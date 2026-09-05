@@ -103,11 +103,11 @@ type RecoveryStat struct {
 // doc mappings surface relevant documentation.
 type DocMapping struct {
 	ID         string    `json:"id"`
-	Pattern    string    `json:"pattern"`      // tool_name or error pattern (glob/regex)
-	Tool       string    `json:"tool"`          // specific tool name filter
-	DocPath    string    `json:"doc_path"`      // path to doc file or URL
-	DocExcerpt string    `json:"doc_excerpt"`   // optional inline excerpt (max 500 chars)
-	MatchCount int       `json:"match_count"`   // how many times this mapping has been triggered
+	Pattern    string    `json:"pattern"`     // tool_name or error pattern (glob/regex)
+	Tool       string    `json:"tool"`        // specific tool name filter
+	DocPath    string    `json:"doc_path"`    // path to doc file or URL
+	DocExcerpt string    `json:"doc_excerpt"` // optional inline excerpt (max 500 chars)
+	MatchCount int       `json:"match_count"` // how many times this mapping has been triggered
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -118,6 +118,6 @@ type StrugglingTool struct {
 	Failures    int     `json:"failures"`
 	Total       int     `json:"total"`
 	FailureRate float64 `json:"failure_rate"`
-	Sessions    int     `json:"sessions"`    // distinct sessions with failures
-	HasDoc      bool    `json:"has_doc"`     // whether a doc mapping exists
+	Sessions    int     `json:"sessions"` // distinct sessions with failures
+	HasDoc      bool    `json:"has_doc"`  // whether a doc mapping exists
 }

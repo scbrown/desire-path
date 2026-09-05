@@ -9,10 +9,10 @@ import (
 
 func TestCategorizeDesire_EnvNeed(t *testing.T) {
 	tests := []struct {
-		name     string
-		tool     string
-		errMsg   string
-		wantCat  string
+		name    string
+		tool    string
+		errMsg  string
+		wantCat string
 	}{
 		{
 			name:    "command not found",

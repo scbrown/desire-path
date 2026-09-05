@@ -17,13 +17,13 @@ import (
 
 // fakeSource implements source.Source for testing.
 type fakeSource struct {
-	name    string
-	fields  *source.Fields
-	err     error
+	name   string
+	fields *source.Fields
+	err    error
 }
 
-func (f *fakeSource) Name() string                           { return f.name }
-func (f *fakeSource) Description() string                     { return "fake source for testing" }
+func (f *fakeSource) Name() string        { return f.name }
+func (f *fakeSource) Description() string { return "fake source for testing" }
 func (f *fakeSource) Extract([]byte) (*source.Fields, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -33,10 +33,10 @@ func (f *fakeSource) Extract([]byte) (*source.Fields, error) {
 
 // fakeStore records calls to RecordInvocation and RecordDesire for test inspection.
 type fakeStore struct {
-	recorded      []model.Invocation
-	desires       []model.Desire
-	err           error
-	desireErr     error
+	recorded  []model.Invocation
+	desires   []model.Desire
+	err       error
+	desireErr error
 }
 
 func (f *fakeStore) RecordInvocation(_ context.Context, inv model.Invocation) error {
@@ -64,12 +64,12 @@ func (f *fakeStore) SetAlias(context.Context, model.Alias) error { return nil }
 func (f *fakeStore) GetAlias(context.Context, string, string, string, string, string) (*model.Alias, error) {
 	return nil, nil
 }
-func (f *fakeStore) GetAliases(context.Context) ([]model.Alias, error)                       { return nil, nil }
+func (f *fakeStore) GetAliases(context.Context) ([]model.Alias, error) { return nil, nil }
 func (f *fakeStore) DeleteAlias(context.Context, string, string, string, string, string) (bool, error) {
 	return false, nil
 }
 func (f *fakeStore) GetRulesForTool(context.Context, string) ([]model.Alias, error) { return nil, nil }
-func (f *fakeStore) Stats(context.Context) (store.Stats, error)        { return store.Stats{}, nil }
+func (f *fakeStore) Stats(context.Context) (store.Stats, error)                     { return store.Stats{}, nil }
 func (f *fakeStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) {
 	return &store.InspectResult{}, nil
 }
@@ -97,9 +97,9 @@ func (f *fakeStore) ListRecoveries(context.Context, time.Time, int) ([]model.Rec
 func (f *fakeStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error) {
 	return nil, nil
 }
-func (f *fakeStore) SetDocMapping(context.Context, model.DocMapping) error { return nil }
+func (f *fakeStore) SetDocMapping(context.Context, model.DocMapping) error      { return nil }
 func (f *fakeStore) GetDocMappings(context.Context) ([]model.DocMapping, error) { return nil, nil }
-func (f *fakeStore) DeleteDocMapping(context.Context, string) (bool, error) { return false, nil }
+func (f *fakeStore) DeleteDocMapping(context.Context, string) (bool, error)     { return false, nil }
 func (f *fakeStore) SuggestDocs(context.Context, string, string) ([]model.DocMapping, error) {
 	return nil, nil
 }
@@ -126,10 +126,10 @@ func TestIngestFullClaudeCodePayload(t *testing.T) {
 		CWD:        "/home/user/project",
 		Error:      "command not found",
 		Extra: map[string]json.RawMessage{
-			"hook_event_name":  json.RawMessage(`"PostToolUseFailure"`),
-			"tool_use_id":      json.RawMessage(`"toolu_01xyz"`),
-			"transcript_path":  json.RawMessage(`"/tmp/transcript"`),
-			"permission_mode":  json.RawMessage(`"default"`),
+			"hook_event_name": json.RawMessage(`"PostToolUseFailure"`),
+			"tool_use_id":     json.RawMessage(`"toolu_01xyz"`),
+			"transcript_path": json.RawMessage(`"/tmp/transcript"`),
+			"permission_mode": json.RawMessage(`"default"`),
 		},
 	}, nil)
 

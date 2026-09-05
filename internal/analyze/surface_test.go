@@ -44,39 +44,49 @@ func (m *mockStore) RecordDesire(_ context.Context, d model.Desire) error {
 }
 
 // Unused Store methods — satisfy the interface.
-func (m *mockStore) GetPaths(context.Context, store.PathOpts) ([]model.Path, error)            { return nil, nil }
-func (m *mockStore) SetAlias(context.Context, model.Alias) error                               { return nil }
+func (m *mockStore) GetPaths(context.Context, store.PathOpts) ([]model.Path, error) { return nil, nil }
+func (m *mockStore) SetAlias(context.Context, model.Alias) error                    { return nil }
 func (m *mockStore) GetAlias(context.Context, string, string, string, string, string) (*model.Alias, error) {
 	return nil, nil
 }
-func (m *mockStore) GetAliases(context.Context) ([]model.Alias, error)                            { return nil, nil }
+func (m *mockStore) GetAliases(context.Context) ([]model.Alias, error) { return nil, nil }
 func (m *mockStore) DeleteAlias(context.Context, string, string, string, string, string) (bool, error) {
 	return false, nil
 }
-func (m *mockStore) GetRulesForTool(context.Context, string) ([]model.Alias, error)               { return nil, nil }
-func (m *mockStore) Stats(context.Context) (store.Stats, error)                                   { return store.Stats{}, nil }
-func (m *mockStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) { return nil, nil }
-func (m *mockStore) RecordInvocation(context.Context, model.Invocation) error                     { return nil }
+func (m *mockStore) GetRulesForTool(context.Context, string) ([]model.Alias, error) { return nil, nil }
+func (m *mockStore) Stats(context.Context) (store.Stats, error)                     { return store.Stats{}, nil }
+func (m *mockStore) InspectPath(context.Context, store.InspectOpts) (*store.InspectResult, error) {
+	return nil, nil
+}
+func (m *mockStore) RecordInvocation(context.Context, model.Invocation) error { return nil }
 func (m *mockStore) ListInvocations(context.Context, store.InvocationOpts) ([]model.Invocation, error) {
 	return nil, nil
 }
 func (m *mockStore) InvocationStats(context.Context) (store.InvocationStatsResult, error) {
 	return store.InvocationStatsResult{}, nil
 }
-func (m *mockStore) ListTurns(context.Context, store.TurnOpts) ([]store.TurnRow, error)        { return nil, nil }
-func (m *mockStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.ToolTurnStat, error) { return nil, nil }
-func (m *mockStore) DetectAndRecordRecovery(context.Context, model.Invocation) error             { return nil }
-func (m *mockStore) ListRecoveries(context.Context, time.Time, int) ([]model.Recovery, error)    { return nil, nil }
-func (m *mockStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error)                 { return nil, nil }
-func (m *mockStore) SetDocMapping(context.Context, model.DocMapping) error                       { return nil }
-func (m *mockStore) GetDocMappings(context.Context) ([]model.DocMapping, error)                  { return nil, nil }
-func (m *mockStore) DeleteDocMapping(context.Context, string) (bool, error)                      { return false, nil }
-func (m *mockStore) SuggestDocs(context.Context, string, string) ([]model.DocMapping, error)     { return nil, nil }
-func (m *mockStore) IncrementDocMatchCount(context.Context, string) error                        { return nil }
+func (m *mockStore) ListTurns(context.Context, store.TurnOpts) ([]store.TurnRow, error) {
+	return nil, nil
+}
+func (m *mockStore) ToolTurnStats(context.Context, store.TurnOpts) ([]store.ToolTurnStat, error) {
+	return nil, nil
+}
+func (m *mockStore) DetectAndRecordRecovery(context.Context, model.Invocation) error { return nil }
+func (m *mockStore) ListRecoveries(context.Context, time.Time, int) ([]model.Recovery, error) {
+	return nil, nil
+}
+func (m *mockStore) RecoveryStats(context.Context) ([]model.RecoveryStat, error) { return nil, nil }
+func (m *mockStore) SetDocMapping(context.Context, model.DocMapping) error       { return nil }
+func (m *mockStore) GetDocMappings(context.Context) ([]model.DocMapping, error)  { return nil, nil }
+func (m *mockStore) DeleteDocMapping(context.Context, string) (bool, error)      { return false, nil }
+func (m *mockStore) SuggestDocs(context.Context, string, string) ([]model.DocMapping, error) {
+	return nil, nil
+}
+func (m *mockStore) IncrementDocMatchCount(context.Context, string) error { return nil }
 func (m *mockStore) StrugglingTools(context.Context, store.StrugglingOpts) ([]model.StrugglingTool, error) {
 	return nil, nil
 }
-func (m *mockStore) Close() error                                                                { return nil }
+func (m *mockStore) Close() error { return nil }
 
 func TestSurfaceTurnPatternDesires_CreatesDesires(t *testing.T) {
 	ms := &mockStore{

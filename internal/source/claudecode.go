@@ -159,6 +159,7 @@ func (c *claudeCode) IsInstalled(configDir string) (bool, error) {
 		hasDPHookCommand(postUse, dpSignpostCommand) &&
 		hasDPHookCommand(preUse, dpSignpostPrefetchCommand) &&
 		hasDPHookCommand(postFailure, dpHookCommand) &&
+		hasDPHookCommand(postFailure, dpSignpostCommand) &&
 		hasDPHookCommand(postFailure, dpPaveCorrectCommand), nil
 }
 
@@ -182,8 +183,17 @@ type claudeHookInner struct {
 // dpHookCommand is the canonical command installed for both hook events.
 const dpHookCommand = "dp ingest --source claude-code"
 
-// dpSignpostCommand is a sibling PostToolUse hook. It never wraps the invoked
-// command; it observes completed Bash searches and may emit disjoint context.
+// dpSignpostCommand is a sibling hook on BOTH PostToolUse and
+// PostToolUseFailure. It never wraps the invoked command; it observes completed
+// Bash searches and may emit disjoint context.
+//
+// The failure registration is not defensive, it is load-bearing: a literal
+// search that finds NOTHING exits non-zero, so the null predicate — "your
+// search found nothing, try a semantic one", the most valuable trigger
+// signposting has — is routed to PostToolUseFailure and was unreachable on
+// every crew pane while the hook lived only on PostToolUse. Measured with the
+// identical query run twice, bare (exit 1) and with `|| true` (exit 0): one
+// event, from the exit-0 run.
 const dpSignpostCommand = "dp signpost"
 const dpSignpostPrefetchCommand = "dp signpost-prefetch"
 
@@ -225,6 +235,7 @@ func installClaudeHooks(settingsPath string, env map[string]string) error {
 		{"PostToolUse", dpHookCommand},
 		{"PostToolUseFailure", dpHookCommand},
 		{"PostToolUse", dpSignpostCommand},
+		{"PostToolUseFailure", dpSignpostCommand},
 		{"PostToolUseFailure", dpPaveCorrectCommand},
 	}
 

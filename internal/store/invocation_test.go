@@ -520,10 +520,10 @@ func TestInvocationStatsTimeWindows(t *testing.T) {
 	now := time.Now().UTC()
 
 	invocations := []model.Invocation{
-		{ID: "tw1", Source: "cc", ToolName: "a", Timestamp: now.Add(-2 * time.Hour)},          // Within 24h.
-		{ID: "tw2", Source: "cc", ToolName: "b", Timestamp: now.Add(-3 * 24 * time.Hour)},     // Within 7d.
-		{ID: "tw3", Source: "cc", ToolName: "c", Timestamp: now.Add(-15 * 24 * time.Hour)},    // Within 30d.
-		{ID: "tw4", Source: "cc", ToolName: "d", Timestamp: now.Add(-60 * 24 * time.Hour)},    // Outside 30d.
+		{ID: "tw1", Source: "cc", ToolName: "a", Timestamp: now.Add(-2 * time.Hour)},       // Within 24h.
+		{ID: "tw2", Source: "cc", ToolName: "b", Timestamp: now.Add(-3 * 24 * time.Hour)},  // Within 7d.
+		{ID: "tw3", Source: "cc", ToolName: "c", Timestamp: now.Add(-15 * 24 * time.Hour)}, // Within 30d.
+		{ID: "tw4", Source: "cc", ToolName: "d", Timestamp: now.Add(-60 * 24 * time.Hour)}, // Outside 30d.
 	}
 	for _, inv := range invocations {
 		if err := s.RecordInvocation(ctx, inv); err != nil {

@@ -31,7 +31,7 @@ func searchBackend(t *testing.T, body string, status int) *httptest.Server {
 func TestSignpostURLIsVerifiedBeforeItIsWritten(t *testing.T) {
 	t.Run("a working backend is accepted and the route derived", func(t *testing.T) {
 		server := searchBackend(t, `{"count":1,"results":[]}`, http.StatusOK)
-		env, err := signpostEnv(server.URL, "-", false)
+		env, err := signpostEnv(server.URL, "-", "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -42,7 +42,7 @@ func TestSignpostURLIsVerifiedBeforeItIsWritten(t *testing.T) {
 
 	t.Run("an explicit /search route is not doubled", func(t *testing.T) {
 		server := searchBackend(t, `{"count":0}`, http.StatusOK)
-		env, err := signpostEnv(server.URL+"/search", "-", false)
+		env, err := signpostEnv(server.URL+"/search", "-", "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,27 +53,27 @@ func TestSignpostURLIsVerifiedBeforeItIsWritten(t *testing.T) {
 
 	t.Run("an unreachable backend is refused", func(t *testing.T) {
 		// A port nothing is bound to: exactly the shipped default's situation.
-		if _, err := signpostEnv("http://127.0.0.1:1/", "-", false); err == nil {
+		if _, err := signpostEnv("http://127.0.0.1:1/", "-", "", false); err == nil {
 			t.Fatal("an unreachable backend was accepted")
 		}
 	})
 
 	t.Run("a non-search answer is refused", func(t *testing.T) {
 		server := searchBackend(t, `<html>hello</html>`, http.StatusOK)
-		if _, err := signpostEnv(server.URL, "-", false); err == nil {
+		if _, err := signpostEnv(server.URL, "-", "", false); err == nil {
 			t.Fatal("a backend that is not a search API was accepted")
 		}
 	})
 
 	t.Run("an error status is refused", func(t *testing.T) {
 		server := searchBackend(t, `{"count":1}`, http.StatusBadGateway)
-		if _, err := signpostEnv(server.URL, "-", false); err == nil {
+		if _, err := signpostEnv(server.URL, "-", "", false); err == nil {
 			t.Fatal("a 502 backend was accepted")
 		}
 	})
 
 	t.Run("the check can be skipped deliberately", func(t *testing.T) {
-		env, err := signpostEnv("http://127.0.0.1:1/", "-", true)
+		env, err := signpostEnv("http://127.0.0.1:1/", "-", "", true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func TestSignpostURLIsVerifiedBeforeItIsWritten(t *testing.T) {
 	})
 
 	t.Run("no url means no env", func(t *testing.T) {
-		env, err := signpostEnv("", "-", false)
+		env, err := signpostEnv("", "-", "", false)
 		if err != nil || env != nil {
 			t.Fatalf("env=%v err=%v", env, err)
 		}
@@ -164,7 +164,7 @@ func TestAlreadyInstalledHooksStillGetTheirEnvironment(t *testing.T) {
 func TestSignpostLogShipsWithTheURL(t *testing.T) {
 	server := searchBackend(t, `{"count":1}`, http.StatusOK)
 
-	env, err := signpostEnv(server.URL, "", false)
+	env, err := signpostEnv(server.URL, "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,16 +174,39 @@ func TestSignpostLogShipsWithTheURL(t *testing.T) {
 		t.Errorf("log = %q, want %q", env["DP_SIGNPOST_LOG"], want)
 	}
 
-	env, err = signpostEnv(server.URL, "/tmp/custom.jsonl", false)
+	env, err = signpostEnv(server.URL, "/tmp/custom.jsonl", "", false)
 	if err != nil || env["DP_SIGNPOST_LOG"] != "/tmp/custom.jsonl" {
 		t.Errorf("custom log path not honoured: %v %v", env, err)
 	}
 
-	env, err = signpostEnv(server.URL, "-", false)
+	env, err = signpostEnv(server.URL, "-", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := env["DP_SIGNPOST_LOG"]; ok {
 		t.Errorf(`"-" must disable the log, got %v`, env)
+	}
+}
+
+// The search mode is a property of the index's content, so it must be settable
+// and validated — an unrecognised mode reaching the backend is a query that
+// silently behaves differently from the one that was measured.
+func TestSignpostSearchModeIsValidated(t *testing.T) {
+	server := searchBackend(t, `{"count":1}`, http.StatusOK)
+	for _, mode := range []string{"hybrid", "semantic", "keyword"} {
+		env, err := signpostEnv(server.URL, "-", mode, false)
+		if err != nil || env["DP_SIGNPOST_SEARCH_MODE"] != mode {
+			t.Errorf("mode %q: env=%v err=%v", mode, env, err)
+		}
+	}
+	env, err := signpostEnv(server.URL, "-", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := env["DP_SIGNPOST_SEARCH_MODE"]; ok {
+		t.Errorf("an unset mode must not be sent at all, got %v", env)
+	}
+	if _, err := signpostEnv(server.URL, "-", "vector", false); err == nil {
+		t.Error("an unrecognised mode was accepted")
 	}
 }

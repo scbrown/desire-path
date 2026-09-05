@@ -352,3 +352,39 @@ func TestNonBashIsOutsideScope(t *testing.T) {
 }
 
 func mustJSON(s string) []byte { b, _ := json.Marshal(s); return b }
+
+// A literal search that finds NOTHING exits non-zero, so production routes it
+// to PostToolUseFailure — which means the null predicate, the most valuable
+// trigger signposting has, is unreachable unless the hook is installed there
+// too. The payload shape differs (an error, no response) and must still gate to
+// "null", and the emitted event name must match the event it came from.
+func TestFailedSearchIsTheNullPredicate(t *testing.T) {
+	raw := []byte(`{"tool_name":"Bash","tool_input":{"command":"grep -rn missing ."},"error":"Exit code 1"}`)
+	out, event, err := Process(context.Background(), raw, Config{Threshold: 2, Condition: "gated-signpost"}, countSearcher(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Predicate != "null" || !event.SignpostShown {
+		t.Fatalf("event=%+v", event)
+	}
+	var got hookOutput
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.HookSpecificOutput.HookEventName != "PostToolUseFailure" {
+		t.Fatalf("event name = %q, want PostToolUseFailure", got.HookSpecificOutput.HookEventName)
+	}
+
+	// A successful call must still say PostToolUse.
+	ok := []byte(`{"tool_name":"Bash","tool_input":{"command":"grep -rn missing ."},"tool_response":"a\nb\nc"}`)
+	out, _, err = Process(context.Background(), ok, Config{Threshold: 2, Condition: "always-signpost"}, countSearcher(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.HookSpecificOutput.HookEventName != "PostToolUse" {
+		t.Fatalf("event name = %q, want PostToolUse", got.HookSpecificOutput.HookEventName)
+	}
+}

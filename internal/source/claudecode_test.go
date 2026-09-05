@@ -253,7 +253,7 @@ func TestClaudeCodeInstall(t *testing.T) {
 		if event == "PostToolUse" {
 			want = append(want, dpSignpostCommand)
 		} else {
-			want = append(want, dpPaveCorrectCommand)
+			want = append(want, dpSignpostCommand, dpPaveCorrectCommand)
 		}
 		got := hookCommands(entries)
 		for _, command := range want {
@@ -412,7 +412,7 @@ func TestClaudeCodeInstallPreservesExisting(t *testing.T) {
 		t.Errorf("first entry command = %q, want %q", ptufEntries[0].Hooks[0].Command, "other-tool record")
 	}
 	got := hookCommands(ptufEntries)
-	for _, command := range []string{"other-tool record", dpHookCommand, dpPaveCorrectCommand} {
+	for _, command := range []string{"other-tool record", dpHookCommand, dpSignpostCommand, dpPaveCorrectCommand} {
 		if !got[command] {
 			t.Errorf("PostToolUseFailure: missing %q (installed: %v)", command, got)
 		}

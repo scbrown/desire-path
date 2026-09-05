@@ -717,7 +717,7 @@ func TestStatsTimeWindows(t *testing.T) {
 	now := time.Now().UTC()
 
 	desires := []model.Desire{
-		{ID: "tw1", ToolName: "a", Error: "e", Timestamp: now.Add(-2 * time.Hour)},  // Within 24h.
+		{ID: "tw1", ToolName: "a", Error: "e", Timestamp: now.Add(-2 * time.Hour)},       // Within 24h.
 		{ID: "tw2", ToolName: "b", Error: "e", Timestamp: now.Add(-3 * 24 * time.Hour)},  // Within 7d.
 		{ID: "tw3", ToolName: "c", Error: "e", Timestamp: now.Add(-15 * 24 * time.Hour)}, // Within 30d.
 		{ID: "tw4", ToolName: "d", Error: "e", Timestamp: now.Add(-60 * 24 * time.Hour)}, // Outside 30d.
@@ -1018,9 +1018,9 @@ func TestInspectPathTopN(t *testing.T) {
 	// Create desires with 6 different error messages.
 	for i := 0; i < 6; i++ {
 		if err := s.RecordDesire(ctx, model.Desire{
-			ID:       fmt.Sprintf("ipn-%d", i),
-			ToolName: "test_tool",
-			Error:    fmt.Sprintf("error_%d", i),
+			ID:        fmt.Sprintf("ipn-%d", i),
+			ToolName:  "test_tool",
+			Error:     fmt.Sprintf("error_%d", i),
 			Timestamp: ts,
 		}); err != nil {
 			t.Fatalf("RecordDesire: %v", err)
