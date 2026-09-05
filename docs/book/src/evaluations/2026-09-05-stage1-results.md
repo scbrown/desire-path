@@ -47,15 +47,45 @@ half a step and tokens by ~9%, both well inside noise at n=40.
 Across the whole main matrix correctness is flat against each family's own
 baseline — claude 0.80 vs 0.80, codex 0.85 vs 0.85 — and so are turns and tokens.
 
-## The positive control that makes this a result and not a dead instrument
+## ⚠ CORRECTION: the correctness comparison was never informative, and this section overclaimed
 
-The same 200 rows separate task difficulty cleanly:
+Raised by muldoon on aegis-kvtjow and verified here. **The adoption result is
+untouched and is not power-limited** — 0 of 53 against 26 of 40 is not marginal.
 
-    strong 0.98      weak 0.79      misleading 0.72
+The correctness comparison is a different matter and I reported it wrongly. Its
+baseline is `always-signpost` at 33/40 = 0.825, so the maximum achievable lift
+is **17.5pp**. The minimum detectable effect at n=40 per arm, 80% power,
+alpha 0.05, is **also 17.5pp** — the same number. The comparison could only have
+reached significance if the payload arm had scored **40/40, perfect**. Power to
+detect the +2.5pp actually observed: **0.05**, indistinguishable from the
+false-positive rate.
 
-The instrument detects a large difference in exactly this data. It detects none
-between conditions. That is the difference between "we found nothing" and "there
-is nothing here".
+For 80% power at this baseline it needed, per arm:
+
+    +2.5pp  3420      +7.5pp  330      +15pp  65
+    +5.0pp   800      +10pp   175
+
+So "buys no measurable correctness" should read **"the correctness effect is
+UNTESTED at this n."** Those are different claims and the first is the kind a
+reader turns into a decision.
+
+### The positive control was doing less work than I said
+
+This section originally argued: the same 200 rows separate task difficulty
+cleanly (strong 0.98, weak 0.79, misleading 0.72), therefore "the instrument
+detects a large difference in exactly this data. It detects none between
+conditions."
+
+That inference does not hold, by the same arithmetic:
+
+    strong .98 vs weak .79       19pp at n=50/100    power 0.86   <- real
+    weak .79 vs misleading .72    7pp at n=100/50    power 0.13   <- not
+
+The gradient establishes that a ~19pp effect is visible at n=50-100. It says
+nothing about whether a 5-10pp CONDITION effect is visible at n=40 — different
+comparison, different n, smaller effect. I traded on an equivalence between them
+that is not there. The control proved the instrument was wired up; it did not
+make the null between conditions a finding.
 
 ## Reading, exactly as preregistered
 
@@ -67,14 +97,17 @@ applies:
 > arm spends stack work on every eligible search whether or not it is wanted,
 > and that cost is the next thing to measure, not this campaign's result.
 
-So: signposting-as-a-pointer is a **publishable negative result**. Adoption is
-bounded at 5.7% and correctness is unmoved. It closes that question rather than
-motivating a third campaign.
+So: signposting-as-a-pointer is a **publishable negative result ON ADOPTION** —
+0 of 53, bounded at 5.7%. That endpoint was adequately powered and the question
+closes.
 
-Signposting-as-a-payload is **adopted and inert**. It fixes the adoption problem
-completely and buys no measurable correctness. Before it ships anywhere it has to
-justify a cost the pointer arm does not pay: a stack query on every eligible
-search, delivered whether or not it was wanted.
+Signposting-as-a-payload is **adopted, with an unmeasured effect on
+correctness**. It fixes the adoption problem completely; whether that buys
+anything, this campaign could not say (see the correction above). Before it
+ships it must justify a stack query on every eligible search delivered whether
+or not it was wanted — and that case now rests on an **unproven** benefit rather
+than a measured absent one. Declining to ship a cost for an unproven return is
+still the right call; "we measured no return" was not the right reason for it.
 
 ## Exploratory, and confounded — stated so it is not mistaken for a finding
 
@@ -138,6 +171,12 @@ the stack rather than about signposting, and it is measured and recorded.
 
 ## Limits, stated rather than found later
 
+- **The correctness endpoint was underpowered to the point of meaninglessness,
+  and I did not compute that before reporting it.** The preregistration sized
+  the campaign for the ADOPTION endpoint (n >= 60 model-visible signposts) and
+  never stated an MDE for correctness. Sizing one endpoint and then reporting
+  another as though it had been tested is the error. A secondary endpoint gets a
+  power statement, or it gets reported as untested.
 - **n = 53 model-visible signposts, against a preregistered target of 60.** The
   estimate assumed more eligible searches per assignment than agents make.
   53 still bounds adoption below 5.7%, and the preregistered minimum was 30, but
