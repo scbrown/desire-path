@@ -3,6 +3,7 @@ package metrics
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -154,5 +155,92 @@ func TestGroupingKeysAreSortedForADeterministicURL(t *testing.T) {
 	Push("j", "x 1\n", srv.URL, map[string]string{"zeta": "z", "alpha": "a"})
 	if want := "/metrics/job/j/alpha/a/zeta/z"; gotPath != want {
 		t.Fatalf("got %q want %q", gotPath, want)
+	}
+}
+
+// ── credential file (aegis-4rgadh) ────────────────────────────────────────────
+//
+// The point of the file is that the secret never enters a process environment,
+// so these assert on what actually reaches the wire: the Authorization header.
+
+func basicAuthOf(t *testing.T, gateway string) (string, string, bool) {
+	t.Helper()
+	var user, pass string
+	var ok bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok = r.BasicAuth()
+	}))
+	defer srv.Close()
+	// Rewrite the caller's userinfo onto the test server's host.
+	u := strings.SplitN(strings.TrimPrefix(gateway, "http://"), "@", 2)
+	target := srv.URL
+	if len(u) == 2 {
+		target = "http://" + u[0] + "@" + strings.TrimPrefix(srv.URL, "http://")
+	}
+	if ok, why := Push("j", "x 1\n", target, nil); !ok {
+		t.Fatalf("push failed: %s", why)
+	}
+	return user, pass, ok
+}
+
+func TestPasswordComesFromTheFileWhenSet(t *testing.T) {
+	f := t.TempDir() + "/pw"
+	if err := os.WriteFile(f, []byte("s3cret\n"), 0o600); err != nil { // note the newline
+		t.Fatal(err)
+	}
+	t.Setenv(EnvPasswordFile, f)
+
+	user, pass, ok := basicAuthOf(t, "http://someuser@placeholder")
+	if !ok {
+		t.Fatal("no basic auth was sent")
+	}
+	if user != "someuser" {
+		t.Errorf("user = %q, want someuser", user)
+	}
+	// The trailing newline must be gone: a password with a stray \n fails auth
+	// with a 401 that reads exactly like a wrong password.
+	if pass != "s3cret" {
+		t.Errorf("pass = %q, want %q (newline not trimmed?)", pass, "s3cret")
+	}
+}
+
+func TestTheFileBeatsAnInlinePassword(t *testing.T) {
+	f := t.TempDir() + "/pw"
+	if err := os.WriteFile(f, []byte("from-file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvPasswordFile, f)
+
+	if _, pass, _ := basicAuthOf(t, "http://someuser:from-url@placeholder"); pass != "from-file" {
+		t.Errorf("pass = %q, want from-file", pass)
+	}
+}
+
+func TestAnUnsetPasswordFileLeavesTheInlinePasswordAlone(t *testing.T) {
+	t.Setenv(EnvPasswordFile, "")
+	if _, pass, _ := basicAuthOf(t, "http://someuser:from-url@placeholder"); pass != "from-url" {
+		t.Errorf("pass = %q, want from-url", pass)
+	}
+}
+
+// A configured-but-broken credential must REFUSE and say so, never fall back to
+// pushing unauthenticated (which 401s) or to a stale inline value.
+func TestAnUnreadablePasswordFileIsRefusedLoudly(t *testing.T) {
+	t.Setenv(EnvPasswordFile, t.TempDir()+"/does-not-exist")
+	ok, why := Push("j", "x 1\n", "http://someuser:from-url@127.0.0.1:1/", nil)
+	if ok || !strings.Contains(why, EnvPasswordFile) {
+		t.Fatalf("ok=%v why=%q", ok, why)
+	}
+}
+
+func TestAnEmptyPasswordFileIsRefusedLoudly(t *testing.T) {
+	f := t.TempDir() + "/pw"
+	if err := os.WriteFile(f, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvPasswordFile, f)
+	ok, why := Push("j", "x 1\n", "http://someuser:from-url@127.0.0.1:1/", nil)
+	if ok || !strings.Contains(why, "empty") {
+		t.Fatalf("ok=%v why=%q", ok, why)
 	}
 }

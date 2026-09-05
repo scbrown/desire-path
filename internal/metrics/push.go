@@ -43,8 +43,20 @@
 // is silent either: a metrics pipeline that quietly does nothing is the thing
 // being guarded against.
 //
-// Configure with DESIRE_PATH_METRICS_PUSHGATEWAY=http://[user:pass@]host[:port].
+// Configure with DESIRE_PATH_METRICS_PUSHGATEWAY=http://[user[:pass]@]host[:port].
 // The credential arrives at run time and is never written to the repo.
+//
+// PREFER THE CREDENTIAL FILE. Put the username in the URL and the password in a
+// file named by DESIRE_PATH_METRICS_PASSWORD_FILE:
+//
+//	DESIRE_PATH_METRICS_PUSHGATEWAY=http://someuser@gateway.example
+//	DESIRE_PATH_METRICS_PASSWORD_FILE=/path/to/secret
+//
+// Then the gateway URL is not a secret and can be set by configuration
+// management in the clear, while the password never enters a process
+// environment — where it would be readable to anything that can see the
+// environment of the process, and would be copied into every child of it. The
+// inline `user:pass@` form still works so existing setups keep running.
 package metrics
 
 import (
@@ -60,6 +72,13 @@ import (
 // EnvVar names the gateway. Unset means metrics are off, which is a supported
 // configuration and not an error.
 const EnvVar = "DESIRE_PATH_METRICS_PUSHGATEWAY"
+
+// EnvPasswordFile names a file holding the basic-auth password, so the secret
+// never has to be inlined into the gateway URL and therefore never has to sit in
+// a process environment. The username still comes from the URL's userinfo, which
+// is not a secret. When this is set and readable it WINS over any inline
+// password; the inline form still works so existing configurations keep running.
+const EnvPasswordFile = "DESIRE_PATH_METRICS_PASSWORD_FILE"
 
 const (
 	jobSamples  = "desire_path"
@@ -107,6 +126,31 @@ func Exposition(samples []Sample) string {
 	return b.String()
 }
 
+// passwordFromFile reads the basic-auth password from EnvPasswordFile. It returns
+// ("", "") when the variable is unset, which means "use whatever the URL carries"
+// and is a supported configuration.
+//
+// The trailing newline is trimmed. That is not a nicety: every ordinary way of
+// writing a secret to a file (`echo`, an editor, most config-management modules)
+// leaves one, and a password with a stray "\n" fails auth with a 401 that reads
+// exactly like a wrong password -- sending the reader to rotate a credential that
+// was correct all along.
+func passwordFromFile() (string, string) {
+	path := strings.TrimSpace(os.Getenv(EnvPasswordFile))
+	if path == "" {
+		return "", ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Sprintf("%s is set to %q but cannot be read (%v) -- nothing pushed", EnvPasswordFile, path, err)
+	}
+	pw := strings.TrimRight(string(b), "\r\n")
+	if pw == "" {
+		return "", fmt.Sprintf("%s (%s) is empty -- nothing pushed", EnvPasswordFile, path)
+	}
+	return pw, ""
+}
+
 // Push sends one job's exposition to the gateway. It never returns a fatal
 // error; the string is the reason, for the caller to print.
 func Push(job, body, gateway string, grouping map[string]string) (bool, string) {
@@ -144,6 +188,14 @@ func Push(job, body, gateway string, grouping map[string]string) (bool, string) 
 	req.Header.Set("Content-Type", "text/plain; version=0.0.4")
 	if u.User != nil {
 		pw, _ := u.User.Password()
+		if fromFile, why := passwordFromFile(); why != "" {
+			// Non-fatal by the package contract, but never silent: a metrics
+			// pipeline that quietly stops authenticating is the thing being
+			// guarded against.
+			return false, why
+		} else if fromFile != "" {
+			pw = fromFile
+		}
 		req.SetBasicAuth(u.User.Username(), pw)
 	}
 	resp, err := (&http.Client{Timeout: timeout}).Do(req)
