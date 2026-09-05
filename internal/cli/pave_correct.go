@@ -13,7 +13,6 @@ import (
 
 	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/model"
-	"github.com/scbrown/desire-path/internal/pave"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -48,8 +47,21 @@ type postFailureOutput struct {
 }
 
 type postFailureSpecific struct {
+	// HookEventName must name the event this output is FOR.
+	//
+	// Omitting it is not a cosmetic lapse: hook output whose event name does
+	// not match the event it came from is DISCARDED, and discarded silently,
+	// so every correction this hook has ever produced was invisible. Measured
+	// as a controlled pair in one pane on one binary — `dp signpost`, which
+	// emits the matching name, delivers from PostToolUseFailure; this hook,
+	// which emitted none, did not (aegis-c2g1s5).
+	HookEventName     string `json:"hookEventName"`
 	AdditionalContext string `json:"additionalContext,omitempty"`
 }
+
+// postFailureEvent is the event this hook is registered on, and the name its
+// output must carry to be accepted.
+const postFailureEvent = "PostToolUseFailure"
 
 // autoCorrectTimeout is the maximum time to wait for a corrected command.
 const autoCorrectTimeout = 30 * time.Second
@@ -133,7 +145,6 @@ func runPaveCorrect(r io.Reader) error {
 	correctionMsg := strings.Join(contextParts, "\n\n")
 
 	// Check if auto_correct is enabled.
-	// (deferred delivery is arranged after the message is final, below)
 	cfg, cfgErr := config.LoadFrom(configPath)
 	autoCorrect := cfgErr == nil && cfg.AutoCorrect
 
@@ -142,9 +153,9 @@ func runPaveCorrect(r io.Reader) error {
 		if correctedCmd != "" {
 			correctionMsg += fmt.Sprintf("\n\n**Corrected command:** `%s`", correctedCmd)
 		}
-		deferCorrection(payload, correctionMsg)
 		out := postFailureOutput{
 			HookSpecificOutput: postFailureSpecific{
+				HookEventName:     postFailureEvent,
 				AdditionalContext: correctionMsg,
 			},
 		}
@@ -168,30 +179,13 @@ func runPaveCorrect(r io.Reader) error {
 		sb.WriteString(fmt.Sprintf("\nResult:\n```\n%s\n```", result))
 	}
 
-	deferCorrection(payload, sb.String())
 	out := postFailureOutput{
 		HookSpecificOutput: postFailureSpecific{
+			HookEventName:     postFailureEvent,
 			AdditionalContext: sb.String(),
 		},
 	}
 	return json.NewEncoder(os.Stdout).Encode(out)
-}
-
-// deferCorrection stores the correction for delivery on the agent's next
-// PreToolUse call.
-//
-// The additionalContext returned alongside it is NOT redundant belt-and-braces:
-// it is the correct output for this hook, and it is what a harness that
-// surfaces PostToolUseFailure context would use. On Claude Code that text is
-// discarded (aegis-c2g1s5), which is why the same message is also parked here
-// and injected one turn later, where delivery is proven. Neither path is a
-// fallback for the other; they serve different harnesses.
-//
-// Failures here are swallowed deliberately: a hook that cannot park a
-// correction must still not disturb the tool call it observed.
-func deferCorrection(payload postFailurePayload, message string) {
-	command, _ := payload.ToolInput["command"].(string)
-	_ = pave.Store(pave.Dir(), payload.SessionID, command, message)
 }
 
 // executeCommand runs a shell command and returns combined stdout+stderr output.

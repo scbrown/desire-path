@@ -22,8 +22,6 @@ internal/        Private packages - not importable by external code.
   signpost/      PostToolUse gating, intent discovery, stack pointer/payload
                  emission, eval JSONL.
   eval/          Ground-truth validation and blocked assignment matrices.
-  pave/          Carries a correction across one turn, from the failure that
-                 produced it to a hook that can actually deliver it.
   config/        Configuration file (~/.dp/config.toml) management.
   cli/           Cobra command definitions + table formatting.
 docs/plans/      Architecture and design documents.
@@ -79,35 +77,19 @@ adopted by being RUN, a payload by being USED — so they are planned separately
 (`dp eval plan --arm payload`), every result row carries `adoption_kind`, and
 `eval.Score` refuses to aggregate a cell whose rows disagree about the kind.
 
+**Hook output MUST name its own event.** `hookSpecificOutput.hookEventName`
+has to match the event the payload came from. Output whose name does not match
+is DISCARDED, silently — nothing reports the rejection. This cost weeks: the
+signpost hardcoded `PostToolUse`, so once it was also registered on
+PostToolUseFailure its context was dropped there, and `dp pave-correct` emitted
+no name at all and was dropped on every failure it ever handled. Both are fixed
+and both are asserted by tests, because the harness will not tell you.
+
 **The prefetch resolves the family.** `signpost-prefetch` runs on PreToolUse
 with a 5 s budget and writes the resolved family and hits into the warm cache;
 PostToolUse adopts that resolution. This is the only way the symbol family can be
 delivered inside 150 ms, and it is why `CacheKey` is keyed on repo and query but
 NOT on family — the family is an output of the lookup, not an input to it.
-
-#### pave
-
-Holds a pending correction between two hook events, keyed by session.
-
-`dp pave-correct` runs on PostToolUseFailure — the obvious place, since a
-correction is worth having exactly when a command has failed. But
-`additionalContext` emitted from that event **never reaches the model** on the
-Claude Code harness. That is measured, not assumed: two independent hooks were
-each proven to have RUN by their own side effect (an event row; a correction
-desire) while their text was discarded, against a PostToolUse control that
-surfaced the identical text.
-
-So the correction is parked here and delivered on the agent's next PreToolUse,
-where injection is proven to reach the model. One turn of latency, no new
-channel. Three properties are load-bearing and tested: it is delivered **once**
-(a repeated correction is nagging, not help), it is **scoped to its session**,
-and a **stale** one is dropped rather than left to be reconsidered forever — a
-correction delivered half an hour later is noise attached to unrelated work.
-
-`dp pave-correct` still emits `additionalContext` as well. That is not
-belt-and-braces: it is the correct output for the hook, and it is what a harness
-that surfaces it would use. The two paths serve different harnesses; neither is
-a fallback for the other.
 
 ## Documentation Hygiene
 
