@@ -193,11 +193,27 @@ while IFS= read -r assignment; do
 		fi
 		"${env_args[@]}" "${args[@]}" "$prompt" < /dev/null > "$raw" || status=$?
 	else
-		jq -n --arg pre "$prefetch_cmd" --arg post "$hook_cmd" '{hooks:{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$pre,timeout:5}]}],PostToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$post,timeout:5}]}]}}' > "$settings"
-		args=(claude -p --no-session-persistence --permission-mode dontAsk --tools Bash --disable-slash-commands --setting-sources '' --output-format stream-json --verbose)
+		# PERMISSIONS ARE PART OF THE INSTRUMENT, NOT OF THE ENVIRONMENT.
+		#
+		# `--permission-mode dontAsk` with `--setting-sources ''` loads no
+		# permission rules at all, so Claude DENIES Bash calls it does not
+		# auto-approve — and an agent that cannot run its search produces a row
+		# that scores as a failure of the intervention. Measured on the first
+		# main matrix: 38 of 189 completed runs and ALL 11 that failed to score
+		# carried "denied because Claude Code is running in don't ask mode", and
+		# every one of the 49 was claude, none codex. That is not a model
+		# difference, it is one arm of the experiment being unable to act.
+		#
+		# So the settings file is written for EVERY claude condition, carrying
+		# the Bash allow, and the hooks are added only where the arm calls for
+		# them. Previously the baselines got no settings file at all, which is
+		# why the contamination reached conditions that install no hooks.
+		hooks='{}'
 		if [[ $condition == always-signpost || $condition == gated-signpost || $condition == payload-signpost ]]; then
-			args+=(--settings "$settings")
+			hooks=$(jq -n --arg pre "$prefetch_cmd" --arg post "$hook_cmd" '{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$pre,timeout:5}]}],PostToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$post,timeout:5}]}]}')
 		fi
+		jq -n --argjson hooks "$hooks" '{permissions:{allow:["Bash"]}, hooks:$hooks}' > "$settings"
+		args=(claude -p --no-session-persistence --permission-mode dontAsk --tools Bash --disable-slash-commands --setting-sources '' --output-format stream-json --verbose --settings "$settings")
 		(cd "$repo_dir" && "${env_args[@]}" "${args[@]}" "$prompt" < /dev/null) > "$raw" || status=$?
 	fi
 	if ((status != 0)); then
