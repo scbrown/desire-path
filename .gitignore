@@ -6,7 +6,6 @@
 .runtime/
 .claude/
 .logs/
-.beads/
 
 # mdbook build output
 docs/book/book/
