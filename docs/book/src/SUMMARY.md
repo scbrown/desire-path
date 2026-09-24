@@ -66,3 +66,4 @@
 
 - [The stack](./stack.md)
 - [Docs map](./docs-map.md)
+- [Release and README re-proof](./releasing.md)

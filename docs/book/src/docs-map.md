@@ -40,3 +40,8 @@ published by the Pages workflow. Use the current user guide above for CLI setup.
 The Coal override in `docs/book/custom/css/custom.css` is vendored byte-for-byte
 from [Caboodle at b351e6de](https://github.com/scbrown/caboodle/blob/b351e6debd4e9b6f5e461d9ebbfa264feb9f4363/docs/book/custom/css/custom.css).
 Keep it in sync with the [stack standard](https://github.com/scbrown/caboodle/blob/main/docs/stack/README-STANDARD.md).
+
+## Maintainers
+
+[Release and README re-proof](releasing.md) is the required checklist whenever
+updating the README's pinned release or expected output.
