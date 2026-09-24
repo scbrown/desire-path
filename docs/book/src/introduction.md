@@ -1,61 +1,48 @@
-# Introduction
+# Desire Path
 
-Picture a university campus. The architects laid careful concrete sidewalks connecting every building. But students cut across the grass, wearing paths between the library and the dorms, from the quad to the parking lot. Those worn trails across the lawn show where the sidewalks *should* have been built.
+Desire Path (`dp`) captures agent tool calls and turns repeated failures into
+patterns you can query. It is for developers maintaining agent instructions,
+tool names, and integrations. The CLI stores data in a local SQLite database;
+source plugins interpret each agent's event format, and hooks connect capture
+to the agent.
 
-These are desire paths: physical traces of actual human behavior, revealing gaps between designed infrastructure and real needs.
+A *desire path* is a trail worn into grass where people choose to walk. Here,
+a mistaken tool name is evidence of the interface an agent expected to find.
+A repeated failure can suggest a better tool name, a missing feature, or an
+instruction worth fixing.
 
-**dp** brings this concept to AI coding assistants. When Claude Code, Cursor, or any AI tool hallucinates a function that doesn't exist, when it invokes a tool that isn't available, when it fails trying to use capabilities it wishes it had—those failures are signals. They're desire paths in your workflow, pointing to features that should exist.
+## From failure to a fix
 
-dp captures these failed tool calls, aggregates them into patterns, and surfaces the most common ones. Instead of watching the same errors scroll past day after day, you can see what your AI really needs, find the closest matches in its actual toolset, and wire up aliases to fix the gap.
+1. Ingest a call through a source plugin. Failed calls also become desires.
+2. Query `dp paths` to find repeated names and `dp inspect` for the details.
+3. Use `dp similar` to compare a mistaken name with known tools.
+4. Record a mapping with `dp alias`, then improve instructions or configure
+   [pave](commands/pave.md) if active interception is appropriate.
 
-## Quick Demo
+An alias alone stores a mapping; it does not automatically reroute every call.
+The [first-success example](getting-started.md) demonstrates capture and query
+without installing any hooks.
 
-Here's the workflow:
+## Capabilities and boundaries
 
-```bash
-# Install
-go install github.com/scbrown/desire-path/cmd/dp@latest
+| capability | what it does |
+|---|---|
+| Patterns | Rank repeated failures and inspect their error messages |
+| Suggestions | Compare names with known tools using string similarity |
+| Aliases | Store intended tool mappings and command correction rules |
+| Source plugins | Normalize calls from Claude Code, Codex, Cursor, and Kiro |
+| Exports | Write failure or invocation records for offline analysis |
+| Signposting | Offer search guidance through optional agent hooks |
 
-# Connect to Claude Code
-dp init --source claude-code
+Signposting observes weak searches and can offer a stack tool command. Its
+evaluation contract, limitations, and measurements are in the
+[signposting plan](https://github.com/scbrown/desire-path/blob/main/docs/plans/009-signposting-eval.md) and
+[evaluation chapters](evaluations/README.md). It is separate from basic capture.
 
-# Work normally in Claude Code; desires accumulate automatically
-# ...some time passes...
+## Where to go next
 
-# See the failures
-dp list
-
-# View aggregated patterns ranked by frequency
-dp paths
-
-# Inspect a specific pattern
-dp inspect read_file
-
-# Find close matches among known tools
-dp similar read_file
-
-# Wire up the fix
-dp alias read_file Read
-```
-
-Done. Now when your AI tries to call `read_file`, it gets routed to `Read`. The desire path becomes a real sidewalk.
-
-## What It Does
-
-- **Captures failures**: Hook into AI tool output streams to record every failed tool invocation
-- **Finds patterns**: Aggregate similar failures into paths ranked by frequency
-- **Suggests fixes**: Use Levenshtein-based similarity to match hallucinated tools to real ones
-- **Creates aliases**: Map the hallucinated names to actual tools, fixing the gap
-- **Tracks everything**: Optional full invocation logging for deeper analysis (success + failure)
-
-## What It Doesn't Do
-
-dp is not a proxy, not a wrapper, not a runtime interceptor. It doesn't sit between your AI and its tools. It's a passive observer and a pattern analyzer. You run it once to set up hooks, then it watches quietly and builds a database of desire paths. When you're ready, you query that database and act on the insights.
-
-## Why This Matters
-
-AI coding assistants evolve fast. Their tool sets change, their output formats shift, and they constantly hallucinate new capabilities before those capabilities actually exist. Instead of treating these failures as noise, dp treats them as signal. Every failed tool call is a vote for a feature request. dp counts the votes.
-
-## Get Started
-
-Ready to map your desire paths? Head to [Getting Started](./getting-started.md) to install dp and hook it into your AI tool.
+- [Getting started](getting-started.md): install and produce a first result.
+- [Using agents](integrations/README.md): inspect and configure hook capture.
+- [Architecture](architecture.md): storage and plugin design.
+- [The stack](stack.md): how the tools fit together.
+- [Docs map](docs-map.md): design notes, historical plans, and supporting files.

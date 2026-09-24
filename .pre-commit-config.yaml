@@ -3,3 +3,11 @@ repos:
     rev: v5.0.0
     hooks:
       - id: detect-private-key
+  - repo: local
+    hooks:
+      - id: documentation-links
+        name: Check published documentation links
+        entry: python3 scripts/check-md-links.py
+        language: system
+        pass_filenames: false
+        files: '(^README\.md$|^docs/|^scripts/.*md-links\.py$)'

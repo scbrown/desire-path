@@ -1,210 +1,85 @@
-# Getting Started
+# Getting started
 
-This guide walks through installing dp, connecting it to Claude Code, and running your first analysis.
+Install a release, ingest one synthetic failure, and query it before connecting an agent.
 
-## Installation
+## Install a release
 
-### Option 1: Install via `go install` (Recommended)
-
-If you have Go 1.24+ installed:
+For Linux x86-64:
 
 ```bash
-go install github.com/scbrown/desire-path/cmd/dp@latest
+mkdir -p /tmp/dp-install && cd /tmp/dp-install
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/desire-path_0.2.1_linux_amd64.tar.gz
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+tar -xzf desire-path_0.2.1_linux_amd64.tar.gz dp
+mkdir -p "$HOME/.local/bin" && install -m 755 dp "$HOME/.local/bin/dp"
+export PATH="$HOME/.local/bin:$PATH"
+dp version
 ```
 
-Make sure `$GOPATH/bin` (or `$HOME/go/bin`) is in your `PATH`.
+Expected: `dp 0.2.1 (6c5840f)`. If you see something else, check `command -v dp`.
 
-### Option 2: Install from Source
+[Release v0.2.1](https://github.com/scbrown/desire-path/releases/tag/v0.2.1)
+also contains Linux arm64, macOS amd64/arm64, and Windows amd64/arm64 archives.
+Download your matching archive and `checksums.txt`, verify its SHA-256 before
+extracting, then place `dp` (or `dp.exe`) on PATH. On macOS use `shasum -a 256`
+to compare the archive digest with its entry; on Windows use `Get-FileHash -Algorithm SHA256`.
+The commands above specifically exercise the Linux amd64 archive.
 
-Clone the repository and build:
+## Build from source
+
+With Go 1.24 or later:
+
+```bash
+go install github.com/scbrown/desire-path/cmd/dp@v0.2.1
+export PATH="$(go env GOPATH)/bin:$PATH"
+dp version
+```
+
+A Go module install does not receive the release build's version linker flags;
+its output can say `dev`. To build the current checkout with Git metadata:
 
 ```bash
 git clone https://github.com/scbrown/desire-path.git
 cd desire-path
 make install
+dp version
 ```
 
-This builds the `dp` binary and copies it to `$GOPATH/bin`.
+## First success in three commands
 
-### Option 3: Download a Binary Release
-
-Visit the [GitHub Releases page](https://github.com/scbrown/desire-path/releases) and download the pre-built binary for your platform. Extract it and move the `dp` binary somewhere in your `PATH`.
-
-## Set Up Claude Code Integration
-
-dp works by hooking into Claude Code's event system. Run:
+This uses a separate temporary database and requires Python 3:
 
 ```bash
-dp init --source claude-code
+DP_DEMO=$(mktemp -d)
+printf '%s\n' '{"tool_name":"read_file","error":"unknown tool","session_id":"demo"}' | dp --db "$DP_DEMO/desires.db" ingest --source claude-code --json > "$DP_DEMO/record.json"
+dp --db "$DP_DEMO/desires.db" paths --json | python3 -c 'import json,sys; p=json.load(sys.stdin)[0]; print(p["pattern"], p["count"])'
 ```
 
-This command updates `~/.claude/settings.json` to add a `PostToolUseFailure` hook that runs `dp record --source claude-code` whenever a tool call fails. The operation is idempotent—safe to run multiple times without duplicating hooks.
+Expected stdout:
 
-### What Just Happened?
-
-`dp init` added a JSON snippet to your Claude Code settings:
-
-```json
-{
-  "hooks": {
-    "PostToolUseFailure": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "dp record --source claude-code",
-            "timeout": 5000
-          }
-        ]
-      }
-    ]
-  }
-}
+```text
+read_file 1
 ```
 
-Now every time Claude Code attempts a tool call that fails, the hook fires asynchronously, passing the failure payload to `dp record`. The command parses the JSON, extracts universal fields (tool name, session ID, error message, working directory), and writes a desire record to `~/.dp/desires.db`.
+`ingest` records the invocation and, because the payload has an error, its failure
+pattern. The saved `record.json` carries the generated ID and timestamp. Run the
+three commands again to get another isolated database and the same output.
 
-Claude Code continues immediately—dp runs in the background and won't slow down your session.
+## Connect your agent
 
-## Accumulate Desires
+Follow [Using agents](integrations/README.md). Once calls accumulate, try
+`dp paths --top 5`, `dp inspect read_file`, and `dp similar read_file`.
+`dp alias read_file Read` records an intended mapping; it does not by itself
+install interception. See [pave](commands/pave.md) for that separate setup.
 
-Just use Claude Code normally. Every tool call failure is now being recorded. After a few sessions, you'll have data to analyze.
+## Troubleshooting
 
-If you want to test the system right away without waiting for real failures, you can manually inject a fake desire:
+- **Wrong version:** check `command -v dp`. A different binary may appear earlier on PATH.
+- **Metrics diagnostic:** without `DESIRE_PATH_METRICS_PUSHGATEWAY`, v0.2.1 reports
+  that no metrics were pushed on stderr. Local ingestion still works; check the query result.
+- **No failures yet:** `dp paths` needs failed invocations. Use the synthetic fixture above
+  to distinguish an empty history from a broken setup.
+- **Hook not found:** the agent process needs the same PATH that contains `dp`.
 
-```bash
-echo '{"tool_name":"read_file","error":"unknown tool","session_id":"test","cwd":"/tmp"}' | dp record --source claude-code
-```
-
-Check that it was recorded:
-
-```bash
-dp list
-```
-
-You should see your test desire (or real ones, if you've been using Claude Code since running `dp init`).
-
-## First Analysis
-
-### List Desires
-
-Show the raw failures:
-
-```bash
-dp list
-```
-
-Add filters:
-
-```bash
-# Only desires from the last 24 hours
-dp list --since 24h
-
-# Only desires matching a specific tool name
-dp list --tool read_file
-
-# Limit to 10 results
-dp list --limit 10
-```
-
-### View Aggregated Paths
-
-Paths are aggregated desire patterns ranked by frequency:
-
-```bash
-dp paths
-```
-
-This shows which tool names failed most often, how many times each failed, and when they were first and last seen.
-
-### Inspect a Specific Pattern
-
-Dive deep into a single tool name:
-
-```bash
-dp inspect read_file
-```
-
-This returns:
-- Total occurrences
-- First/last seen timestamps
-- Histogram of failures over time
-- Top error messages
-- Top input payloads (truncated)
-- Whether an alias already exists
-
-### Find Similar Tools
-
-Find known tools similar to a hallucinated name:
-
-```bash
-dp similar read_file
-```
-
-dp uses Levenshtein distance with camelCase normalization, prefix bonuses, and suffix bonuses to rank known tools by similarity. By default it shows the top 5 matches with scores above 0.5.
-
-The known tools list is configurable—see [Configuration](./configuration.md) for details.
-
-### Create an Alias
-
-Once you've identified the correct real tool, wire up the alias:
-
-```bash
-dp alias read_file Read
-```
-
-Now any system consuming the dp database can map `read_file` → `Read`. For example, a Claude Code plugin could intercept tool calls, check the aliases table, and rewrite the tool name before execution.
-
-dp doesn't currently perform this rewriting automatically—it just stores the mapping. You can list all aliases with:
-
-```bash
-dp aliases
-```
-
-Delete an alias:
-
-```bash
-dp alias --delete read_file
-```
-
-## Optional: Track All Invocations
-
-By default, dp only captures failures (via `PostToolUseFailure`). If you want to track *all* tool calls—successes and failures—for deeper analysis (like success rates, invocation frequency, session analysis), enable full tracking:
-
-```bash
-dp init --source claude-code --track-all
-```
-
-This adds two additional hooks:
-- `PostToolUse → dp ingest --source claude-code`
-- `PostToolUseFailure → dp ingest --source claude-code`
-
-The `ingest` command writes invocation records (not desire records). Invocations include a boolean `is_error` field to distinguish successes from failures. This generates significantly more data—every tool call fires the hook—so only enable it if you need invocation-level analytics.
-
-View invocation stats:
-
-```bash
-dp stats --invocations
-```
-
-Export invocation data:
-
-```bash
-# Export as JSON
-dp export --type invocations
-
-# Export as CSV
-dp export --type invocations --format csv > invocations.csv
-
-# Filter by date
-dp export --type invocations --since 2026-02-01
-```
-
-## Next Steps
-
-- Customize configuration: [Configuration Reference](./configuration.md)
-- Learn about the data model: [Concepts](./concepts/README.md)
-- Explore all commands: [Command Reference](./commands/README.md)
-- Integrate other AI tools: [Integrations](./integrations/README.md)
-- Understand the internals: [Architecture](./architecture.md)
+See [configuration](configuration.md) for persistent settings and database paths.

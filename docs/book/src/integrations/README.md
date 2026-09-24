@@ -1,104 +1,40 @@
-# Integrations
+# Using agents
 
-dp uses a **source plugin system** to integrate with different AI coding assistants. Each AI tool has its own output format, hook mechanism, and session model. Source plugins abstract these differences behind a common interface, allowing dp to record desires and invocations from any tool.
+A source plugin translates an agent event into an invocation: tool name, inputs,
+error, session, and working directory. Failed invocations also become desires.
+The release's `dp sources` command lists the plugins and installer status.
 
-## How It Works
-
-1. **Hook Installation**: The AI tool (like Claude Code) provides event hooks that trigger on tool calls or failures. dp installs shell commands as hook handlers.
-2. **Payload Extraction**: When the hook fires, it passes a JSON payload to dp. The source plugin parses this payload and extracts universal fields.
-3. **Normalization**: The plugin maps tool-specific fields (like Claude Code's `session_id`) to universal fields (like `instance_id`).
-4. **Storage**: dp writes the normalized data to its SQLite database.
-
-## Plugin Architecture
-
-Every source plugin implements the `source.Source` interface:
-
-```go
-type Source interface {
-    Name() string
-    Extract(raw []byte) (*Fields, error)
-}
-```
-
-The `Extract` method receives raw bytes (usually JSON) and returns structured `Fields`:
-
-```go
-type Fields struct {
-    ToolName   string          // Required: the tool that was invoked
-    InstanceID string          // Optional: session or invocation ID
-    ToolInput  json.RawMessage // Optional: raw JSON input to the tool
-    CWD        string          // Optional: working directory
-    Error      string          // Optional: error message (for failures)
-    Extra      map[string]json.RawMessage // Source-specific fields
-}
-```
-
-Plugins can optionally implement `source.Installer` to support `dp init`:
-
-```go
-type Installer interface {
-    Install(opts InstallOpts) error
-}
-```
-
-This allows `dp init --source <name>` to automatically configure hooks in the AI tool's settings.
-
-## Currently Supported Tools
-
-### Claude Code
-
-Status: **Fully supported**
-
-Claude Code provides `PostToolUseFailure` and `PostToolUse` hooks. dp uses these to capture failed tool calls (for desires) or all tool calls (for invocations).
-
-See the [Claude Code Integration Guide](./claude-code.md) for setup instructions and details.
-
-## Planned Integrations
-
-The following tools are planned but not yet implemented:
-
-- **Cursor**: Cursor AI editor (pending hook API documentation)
-- **Gemini CLI**: Google's AI CLI (pending output format spec)
-- **GitHub Copilot CLI**: `gh copilot` command output parsing
-- **Cody**: Sourcegraph's Cody assistant
-
-## Writing Your Own Plugin
-
-If you're using an AI tool that dp doesn't yet support, you can write a plugin. It's just a Go file that implements `source.Source` and calls `source.Register` in `init()`.
-
-See [Writing a Source Plugin](./writing-plugins.md) for a complete guide with examples.
-
-## Plugin Registry
-
-All plugins self-register at startup via `init()` functions. dp discovers plugins by importing them:
-
-```go
-import (
-    _ "github.com/scbrown/desire-path/internal/source" // registers claude-code
-    // Add more plugin imports here
-)
-```
-
-List available plugins:
+## Claude Code
 
 ```bash
-dp init --list
+dp init --source claude-code
+dp sources
 ```
 
-This shows all registered source names that can be used with `--source`.
+The installer merges `~/.claude/settings.json`. In v0.2.1 it adds:
 
-## Hook Execution Model
+| event | command | purpose |
+|---|---|---|
+| PostToolUse and PostToolUseFailure | `dp ingest --source claude-code` | Capture calls and failures |
+| PreToolUse, Bash | `dp signpost-prefetch` | Prepare optional search guidance |
+| PostToolUse and PostToolUseFailure, Bash | `dp signpost` | Offer search guidance |
+| PostToolUseFailure | `dp pave-correct` | Consult correction rules |
 
-dp hooks are designed to be:
+Review the settings after installation. These entries use command hooks without
+an `async` flag; do not assume capture has zero latency. For a capture-only
+configuration and verification, see [Claude Code](claude-code.md).
+Signposting needs a search backend; see the [evaluation plan](https://github.com/scbrown/desire-path/blob/main/docs/plans/009-signposting-eval.md)
+and `dp init --help` for the backend flags. [Pave](../commands/pave.md) covers
+active interception as a separate opt-in.
 
-- **Asynchronous**: The AI tool doesn't block waiting for dp to finish
-- **Isolated**: dp failures don't affect the AI tool's operation
-- **Lightweight**: Writes are fast; database is append-only with WAL mode
+## Other source plugins
 
-Typical hook latency: <10ms for desire recording, <20ms for invocation ingestion.
+`dp sources` in v0.2.1 lists `codex`, `cursor`, and `kiro` as well as `claude-code`.
+Use the installed binary's `dp init --help` and inspect generated configuration
+for the chosen source. A parser or installer being present does not establish
+that every event is emitted by every agent version. The
+[Codex design note](https://github.com/scbrown/desire-path/blob/main/docs/design-codex-source-plugin.md) records its protocol.
 
-## Next Steps
-
-- [Claude Code Integration](./claude-code.md): Detailed guide for Claude Code users
-- [Writing a Plugin](./writing-plugins.md): Build your own source plugin
-- [Architecture](../architecture.md): Deep dive into dp's internals
+For custom event producers, pipe their supported payloads into
+`dp ingest --source <name>`. See [writing a source plugin](writing-plugins.md)
+for the interface and [architecture](../architecture.md) for data flow.
