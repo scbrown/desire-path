@@ -1,43 +1,26 @@
 # dp init
 
-Set up integration with AI coding tools
+Install source-specific agent configuration:
 
-## Usage
+```bash
+dp init --source claude-code
+```
 
-    dp init [flags]
+The Claude Code installer merges `~/.claude/settings.json` and installs ingestion
+for successful and failed tool calls, plus search-guidance and correction hooks.
+See [Using agents](../integrations/README.md) for the complete hook list and
+[capture-only configuration](../integrations/claude-code.md) for the minimal alternative.
 
 ## Flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| --source | "" | Source plugin name (required) |
-| --track-all | false | Record all invocations, not just failures |
-| --claude-code | false | DEPRECATED: Use --source claude-code instead |
+| flag | purpose |
+|---|---|
+| `--source` | Select a source plugin; see `dp sources` |
+| `--settings` | Override the source-specific settings path |
+| `--signpost-url` | Configure and verify a search backend |
+| `--signpost-log` | Choose a signposting event log; `-` disables it |
+| `--signpost-search-mode` | Request hybrid, semantic, or keyword search |
+| `--skip-signpost-url-check` | Explicitly install before the backend is available |
 
-## Examples
-
-    $ dp init --source claude-code
-    Initialized desire_path integration for claude-code
-    Updated: /home/user/.config/claude-code/settings.json
-
-    $ dp init --source claude-code --track-all
-    Initialized desire_path integration for claude-code (tracking all invocations)
-    Updated: /home/user/.config/claude-code/settings.json
-
-    $ dp init --source cursor
-    Initialized desire_path integration for cursor
-    Updated: /home/user/.cursor/config.json
-
-## Details
-
-The init command configures hooks in your AI coding tool's settings to automatically capture tool call data. It locates the tool's configuration file, merges in the necessary hooks, and preserves existing settings.
-
-The integration is non-destructive: init will never clobber existing configuration. It merges hooks intelligently, so you can run init multiple times safely.
-
-By default, only failed tool calls are recorded. Use `--track-all` to capture every tool invocation, which is useful for analyzing usage patterns and generating comprehensive statistics.
-
-The `--claude-code` flag is deprecated. Use `--source claude-code` instead for consistency with other commands.
-
-After running init, the AI tool will automatically send tool call data to desire_path. You don't need to manually pipe output or modify your workflow.
-
-If the source plugin doesn't support automatic initialization (no config file to modify), init will print instructions for manual setup.
+Use `dp init --help` to inspect the installed version's flags. `--track-all` and
+`--claude-code` are not flags in v0.2.1. Ingestion already captures both outcomes.

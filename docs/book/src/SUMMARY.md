@@ -63,3 +63,6 @@
 # Reference
 
 - [Architecture](./architecture.md)
+
+- [The stack](./stack.md)
+- [Docs map](./docs-map.md)

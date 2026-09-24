@@ -22,6 +22,18 @@ jobs:
       - name: Private-key refusal controls and tracked-file scan
         run: python3 scripts/check-private-keys.py
 
+      - name: Documentation links and refusal controls
+        run: |
+          python3 scripts/test-md-links.py
+          python3 scripts/check-md-links.py
+
+      - name: Install mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: '0.5.4'
+      - name: Build documentation
+        run: mdbook build docs/book
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -34,3 +46,9 @@ jobs:
 
       - name: Integration tests
         run: go test -tags integration ./internal/integration/
+
+      - name: Verify documented source install
+        run: |
+          mkdir -p "$RUNNER_TEMP/dp-docs-bin"
+          GOBIN="$RUNNER_TEMP/dp-docs-bin" go install github.com/scbrown/desire-path/cmd/dp@v0.2.1
+          env -i HOME="$RUNNER_TEMP/dp-docs-home" PATH="$RUNNER_TEMP/dp-docs-bin:/usr/bin:/bin" dp version

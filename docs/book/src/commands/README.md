@@ -1,13 +1,13 @@
 # Command Reference
 
-The desire_path CLI provides commands for recording, analyzing, and fixing tool call failures in AI coding workflows.
+The `dp` CLI provides commands for recording, analyzing, and fixing tool call failures in AI coding workflows.
 
 ## Command Categories
 
 ### Record & Ingest
 Commands for capturing tool call data from AI coding tools.
 
-- **record** - Record a failed tool call from stdin
+- **record** - Deprecated compatibility entrypoint; use ingest
 - **ingest** - Ingest tool call data from a source plugin
 - **init** - Set up integration with AI coding tools
 
@@ -37,7 +37,7 @@ Commands for managing configuration.
 
 | Command | Description |
 |---------|-------------|
-| record | Record a failed tool call from stdin |
+| record | Deprecated compatibility entrypoint; use ingest |
 | ingest | Ingest tool call data from a source plugin |
 | init | Set up integration with AI coding tools |
 | list | List recent desires |
@@ -59,3 +59,11 @@ All commands support these global flags:
 |------|---------|-------------|
 | --db PATH | ~/.dp/desires.db | Path to the SQLite database |
 | --json | false | Output results as JSON |
+
+## Additional commands
+
+The v0.2.1 CLI also lists `sources`, `version`, `turns`, `recoveries`, `struggling`,
+`env-needs`, `map`, `mappings`, `suggest`, `serve`, `eval`, and `signpost`.
+Use `dp <command> --help` for their version-specific options.
+The [docs map](../docs-map.md) routes their design notes and the
+[evaluation chapters](../evaluations/README.md) describe signposting experiments.

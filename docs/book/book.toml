@@ -9,4 +9,5 @@ description = "Track and analyze failed AI tool calls to build better developer 
 default-theme = "coal"
 preferred-dark-theme = "coal"
 git-repository-url = "https://github.com/scbrown/desire-path"
-edit-url-template = "https://github.com/scbrown/desire-path/edit/main/docs/book/src/{path}"
+edit-url-template = "https://github.com/scbrown/desire-path/edit/main/docs/book/{path}"
+additional-css = ["custom/css/custom.css"]

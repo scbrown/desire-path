@@ -2,306 +2,143 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.svg">
-    <img alt="desire path" src="docs/assets/banner-dark.svg" width="660">
+    <img alt="Desire Path" src="docs/assets/banner-dark.svg" width="660">
   </picture>
 </p>
-
+<h1 align="center">Desire Path</h1>
+<p align="center"><em>👣 Find the tool calls your agents get wrong, and turn repeats into fixes.</em></p>
 <p align="center">
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white" alt="Go 1.24+">
-  <img src="https://img.shields.io/badge/SQLite-embedded-003B57?logo=sqlite&logoColor=white" alt="SQLite">
-  <img src="https://img.shields.io/badge/CGo-none-success" alt="No CGo">
-  <img src="https://img.shields.io/badge/deps-4-brightgreen" alt="4 Dependencies">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/scbrown/desire-path/actions/workflows/ci.yml"><img src="https://github.com/scbrown/desire-path/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/scbrown/caboodle"><img src="https://img.shields.io/badge/stack-quipu-8B5E3C.svg" alt="Quipu stack"></a>
 </p>
 
----
+**Desire Path (`dp`) is a CLI and a set of agent hooks for developers who want
+fewer repeated tool-call failures. It stores calls locally, ranks recurring
+failures, and records mappings from mistaken tool names to real ones.**
+The name comes from the trails people wear through grass: evidence of where a path is needed.
 
-Claude calls `Edit` with `file` instead of `file_path`. The tool rejects it. Claude retries with the right parameter, burning tokens and time. Tomorrow it makes the same mistake. Next week, 23 more times. Across your team, hundreds of wasted retries — all from the same mismatch.
+## Why you would want it
 
-**`dp` captures every failed tool call, surfaces the patterns, and shows you exactly what to fix — or what to build next.**
+- Find repeated failures across sessions instead of reading each transcript.
+- Compare mistaken tool names with known tools and record the intended mapping.
+- Use the failure history to improve instructions, tool names, or integrations.
 
-Think of it like [desire paths](https://en.wikipedia.org/wiki/Desire_path) on a campus — worn trails through the grass where people actually walk. You don't fight the path. You pave it.
+Read [how the workflow fits together](docs/book/src/introduction.md).
 
----
+## Install
 
-## Signposting (private sibling mode)
-
-**Signposting** executes a deterministic literal search unmodified and then,
-only when its result is empty or too large, offers a **signpost**: a pointer and
-runnable Bobbin command on the agent hook channel. The agent's subsequent use
-of that command is **adoption**. The null/high-cardinality condition is the
-**gating predicate**. **Contract preservation** means the original command's
-stdout and exit status remain byte-identical to the un-intercepted baseline.
-
-The mode is a sibling to hallucination capture: a Bash-scoped PreToolUse hook
-launches detached, repo-scoped semantic prefetch for `grep` and `rg`, and the
-PostToolUse sibling consumes only completed warm results. Neither hook shadows
-either binary. Native agent Grep/Glob tools are outside v1. Semantic timeouts
-and errors are dropped, leaving baseline behavior unchanged. See
-[`docs/plans/009-signposting-eval.md`](docs/plans/009-signposting-eval.md) for
-the eval-first event contract.
-
----
-
-## 🎬 See It In Action
+Linux x86-64, pinned release with checksum verification:
 
 ```bash
-# 1. Hook into Claude Code (one-time setup)
-$ dp init --source claude-code
-✓ Configured Claude Code hooks
-  PostToolUseFailure → dp record --source claude-code
-
-# 2. Use Claude Code normally — failures get recorded in the background
-
-# 3. A week later: what's been happening?
-$ dp paths --top 5
-RANK  PATTERN            COUNT  FIRST_SEEN  LAST_SEEN
-1     search_files       47     2026-01-15  2026-02-08
-2     Edit:file          23     2026-01-18  2026-02-07
-3     execute_command    18     2026-01-20  2026-02-08
-4     write_file         12     2026-01-22  2026-02-06
-5     list_directory      8     2026-02-01  2026-02-05
-
-# 4. "search_files" keeps failing — what real tool is it closest to?
-$ dp similar search_files
-CANDIDATE  SCORE
-Grep       0.82
-Glob       0.64
-
-# 5. Map the hallucination to the real tool
-$ dp alias search_files Grep
-✓ Alias: search_files → Grep
-
-# 6. Or better — 47 sessions tried "search_files". That's a feature request.
-#    Build an MCP tool called search_files that wraps Grep.
-#    dp just told you where to pour the concrete.
+mkdir -p /tmp/dp-install && cd /tmp/dp-install
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/desire-path_0.2.1_linux_amd64.tar.gz
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+tar -xzf desire-path_0.2.1_linux_amd64.tar.gz dp
+mkdir -p "$HOME/.local/bin" && install -m 755 dp "$HOME/.local/bin/dp"
+export PATH="$HOME/.local/bin:$PATH"
+dp version
 ```
 
-> **47 failures, one pattern, one fix.** The AI is telling you what the tool *should* have been called. That's a desire path.
+Expected: `dp 0.2.1 (6c5840f)`. If you see something else, check `command -v dp`.
 
----
+From source (Go 1.24+): `go install github.com/scbrown/desire-path/cmd/dp@v0.2.1`,
+then add `$(go env GOPATH)/bin` to PATH and run `dp version`.
+See [installation](docs/book/src/getting-started.md) for macOS, Windows, and source-checkout builds.
 
-## ✨ Features
+## First success in three commands
 
-🔍 **Pattern Detection** — Aggregate failures into ranked paths. See what's breaking most, not just what broke last.
-
-🧠 **Smart Suggestions** — Levenshtein-powered similarity engine finds the real tool name behind every hallucination. CamelCase and underscore-aware.
-
-🔗 **[Alias System](https://scbrown.github.io/desire-path/concepts/aliases.html)** — Annotate patterns with what they *should* map to (`search_files` → `Grep`). Aliases appear in `dp paths` output and short-circuit `dp similar`. Use them to build your rosetta stone, then act on it — add instructions to CLAUDE.md, build MCP tool wrappers, or lobby for better tool names upstream.
-
-🔌 **Plugin Architecture** — Extensible source plugins. Claude Code ships built-in. Write your own in ~50 lines of Go.
-
-📊 **Full Telemetry** — Track *all* tool calls (not just failures) with `--track-all`. Success rates, usage patterns, session timelines.
-
-💾 **Zero-Config Storage** — Embedded SQLite, pure Go, no CGo. Just works. Single file at `~/.dp/desires.db`.
-
-📤 **[Export Anything](https://scbrown.github.io/desire-path/commands/export.html)** — Dump raw data as JSONL or CSV. Pipe through `jq` for ad-hoc analysis, feed into dashboards, or back up with `dp export > backup.jsonl`. Supports filtering by date and data type (failures vs all invocations).
-
-🖥️ **Beautiful Output** — TTY-aware tables with bold headers. `--json` everywhere for scripting.
-
-⚡ **Async & Silent** — Hook execution is async. dp never slows down your AI assistant.
-
-🏗️ **Cross-Platform** — Linux, macOS, Windows. amd64 and arm64. Single binary, zero dependencies.
-
----
-
-## 🚀 Quick Start
-
-**60 seconds from install to insights:**
+Use a temporary database and one synthetic failed call; Python 3 formats the result:
 
 ```bash
-# Install
-go install github.com/scbrown/desire-path/cmd/dp@latest
+DP_DEMO=$(mktemp -d)
+printf '%s\n' '{"tool_name":"read_file","error":"unknown tool","session_id":"demo"}' | dp --db "$DP_DEMO/desires.db" ingest --source claude-code --json > "$DP_DEMO/record.json"
+dp --db "$DP_DEMO/desires.db" paths --json | python3 -c 'import json,sys; p=json.load(sys.stdin)[0]; print(p["pattern"], p["count"])'
+```
 
-# Hook into your AI tool
+Expected stdout:
+
+```text
+read_file 1
+```
+
+The failure became a queryable pattern without configuring an agent or touching your usual database.
+An optional-metrics diagnostic may also appear on stderr; see [troubleshooting](docs/book/src/getting-started.md#troubleshooting).
+
+## On your own data
+
+After your agent has recorded calls:
+
+| question | command |
+|---|---|
+| Which failures repeat? | `dp paths --top 5` |
+| What happened for this tool? | `dp inspect read_file` |
+| What tool might have been intended? | `dp similar read_file` |
+| How do I record the intended mapping? | `dp alias read_file Read` |
+| How do I export the failures? | `dp export --format json` |
+
+An alias records a mapping. Active interception is a separate [pave setup](docs/book/src/commands/pave.md).
+See the [CLI reference](docs/book/src/commands/README.md) for flags and all commands.
+
+## Wire it into your agent
+
+For Claude Code, with `dp` on the agent's PATH:
+
+```bash
 dp init --source claude-code
-
-# (Use Claude Code normally for a while...)
-
-# What's failing?
-dp paths
-
-# Deep-dive a pattern
-dp inspect read_file
-
-# Fix it with an alias
-dp alias read_file Read
-
-# See your aliases
-dp aliases
+dp sources
 ```
 
----
+The installer merges hooks into `~/.claude/settings.json`. It installs ingestion
+for successes and failures, plus signposting and correction hooks. Review that
+file after installation. [Using agents](docs/book/src/integrations/README.md)
+explains the installed hooks and the Codex, Cursor, and Kiro source plugins.
 
-## 📦 Installation
+## Before you start
 
-### Go Install (recommended)
+| requirement | support |
+|---|---|
+| Release archives | Linux, macOS, Windows; amd64 and arm64 |
+| Source build | Go 1.24+; no CGo required |
+| README demo | Bash-compatible shell and Python 3 |
+| Local storage | SQLite at `~/.dp/desires.db`; override with `--db` |
+| Hook capture | A supported agent and `dp` on its PATH |
+
+Keep tool inputs and error messages in mind when sharing [exports](docs/book/src/commands/export.md).
+
+## What's next
+
+- [Read the book](docs/book/src/introduction.md)
+- [Find every design and reference document](docs/book/src/docs-map.md)
+- [Configure capture for your agent](docs/book/src/integrations/README.md)
+
+## 🧺 The stack
+
+Caboodle installs these together and proves each one works; every tool also stands alone.
+
+| tool | what it gives your agents |
+|---|---|
+| [caboodle](https://github.com/scbrown/caboodle) | one wizard that installs the stack and proves it works |
+| [quipu](https://github.com/scbrown/quipu) | a knowledge graph that refuses facts that break its rules |
+| [camayoc](https://github.com/scbrown/camayoc) | the starter vocabulary, and how new knowledge earns its way in |
+| [bobbin](https://github.com/scbrown/bobbin) | search and context over your repositories, served over MCP |
+| [yupana](https://github.com/scbrown/yupana) | which code calls which: the blast radius before an edit |
+| [desire-path](https://github.com/scbrown/desire-path) **(you are here)** | the tool calls your agents get wrong, so you can fix them |
+
+## Contributing
+
+From a checkout, with [just](https://github.com/casey/just), Go, Python 3,
+pre-commit, and mdBook installed:
 
 ```bash
-go install github.com/scbrown/desire-path/cmd/dp@latest
+just build
+just test
+just check
 ```
 
-### From Source
+See the [development guide](book/src/development/contributing.md).
 
-```bash
-git clone https://github.com/scbrown/desire-path.git
-cd desire-path
-make install
-```
+## 📜 License
 
-### Binary Releases
-
-Pre-built binaries for Linux, macOS, and Windows available on the [Releases](https://github.com/scbrown/desire-path/releases) page.
-
----
-
-## 🔧 Commands
-
-### Record & Ingest
-
-| Command | Description |
-|---------|-------------|
-| `dp record` | Record a failed tool call from stdin JSON |
-| `dp ingest` | Ingest tool call data via a source plugin |
-| `dp init` | Set up automatic recording from an AI tool |
-
-### Query & Analyze
-
-| Command | Description |
-|---------|-------------|
-| `dp list` | List recent desires with filtering |
-| `dp paths` | Show aggregated patterns ranked by frequency |
-| `dp inspect` | Deep-dive a specific pattern with histograms |
-| `dp stats` | Summary statistics and activity overview |
-| `dp export` | Export raw data as JSON or CSV |
-
-### Map & Fix
-
-| Command | Description |
-|---------|-------------|
-| `dp similar` | Find similar known tools via string similarity |
-| `dp alias` | Create or update a tool name mapping |
-| `dp aliases` | List all configured aliases |
-
-### Configure
-
-| Command | Description |
-|---------|-------------|
-| `dp config` | View or modify dp settings |
-
-> 📖 Every command supports `--json` for machine-readable output and `--help` for details.
-
----
-
-## 🔌 Integrations
-
-### Claude Code ✅
-
-```bash
-# Failures only (default)
-dp init --source claude-code
-
-# Everything — failures AND successes
-dp init --source claude-code --track-all
-```
-
-Hooks into Claude Code's `PostToolUseFailure` (and optionally `PostToolUse`) events. Async execution, zero impact on your workflow.
-
-### Coming Soon 🚧
-
-| Tool | Status |
-|------|--------|
-| Gemini CLI | Planned |
-| Cursor | Planned |
-| Kiro CLI | Planned |
-| OpenCode | Planned |
-
-> 🔌 **Want to add your tool?** The plugin interface is ~50 lines of Go. See [Writing a Source Plugin](https://scbrown.github.io/desire-path/integrations/writing-plugins.html).
-
----
-
-## 🏗️ How It Works
-
-```mermaid
-graph LR
-    A[AI Tool] -->|hook payload| B[Source Plugin]
-    B -->|Extract| C[Universal Fields]
-    C -->|Ingest| D[SQLite]
-    D -->|Query| E[dp list / paths / stats]
-    E -->|Analyze| F[dp similar / inspect]
-    F -->|Fix| G[dp alias]
-
-    style A fill:#e1bee7,stroke:#7b1fa2,color:#000
-    style B fill:#bbdefb,stroke:#1565c0,color:#000
-    style C fill:#c8e6c9,stroke:#2e7d32,color:#000
-    style D fill:#fff9c4,stroke:#f9a825,color:#000
-    style E fill:#ffccbc,stroke:#d84315,color:#000
-    style F fill:#b3e5fc,stroke:#0277bd,color:#000
-    style G fill:#dcedc8,stroke:#558b2f,color:#000
-```
-
-**Data flow**: Hook fires → source plugin parses the payload → universal fields extracted → stored in SQLite → query, analyze, and fix with the CLI.
-
----
-
-## ⚙️ Configuration
-
-```bash
-# See all settings
-dp config
-
-# Change database location
-dp config db_path /path/to/desires.db
-
-# Default to JSON output
-dp config default_format json
-
-# Customize known tools for suggestions
-dp config known_tools Read,Write,Edit,Bash,Glob,Grep,MyCustomTool
-```
-
-Config lives at `~/.dp/config.toml`. See the [Configuration Reference](https://scbrown.github.io/desire-path/configuration.html) for all options.
-
----
-
-## 📖 Documentation
-
-Full documentation available at **[scbrown.github.io/desire-path](https://scbrown.github.io/desire-path/)**:
-
-- **[Introduction](https://scbrown.github.io/desire-path/introduction.html)** — The what and why
-- **[Getting Started](https://scbrown.github.io/desire-path/getting-started.html)** — Zero to insights in 5 minutes
-- **[Concepts](https://scbrown.github.io/desire-path/concepts/index.html)** — Desires, paths, aliases, invocations
-- **[Command Reference](https://scbrown.github.io/desire-path/commands/index.html)** — Every command, every flag
-- **[Integrations](https://scbrown.github.io/desire-path/integrations/index.html)** — Claude Code setup, plugin authoring
-- **[Architecture](https://scbrown.github.io/desire-path/architecture.html)** — Data model, storage, plugin system
-
-```bash
-# Build the docs locally (requires mdbook)
-make docs
-
-# Serve with live reload
-make docs-serve
-```
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! The plugin system is specifically designed for community extensions.
-
-**Quick wins:**
-- Add a source plugin for your favorite AI tool
-- Report desire paths you've discovered (meta!)
-- Improve documentation
-
----
-
-## 📄 License
-
-[MIT](LICENSE) — do what you want with it.
-
----
-
-<p align="center">
-  <i>Every failed tool call is a feature request from the future.</i>
-</p>
+[MIT](LICENSE).
