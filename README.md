@@ -24,7 +24,7 @@ The name comes from the trails people wear through grass: evidence of where a pa
 - Compare mistaken tool names with known tools and record the intended mapping.
 - Use the failure history to improve instructions, tool names, or integrations.
 
-Read [how the workflow fits together](docs/book/src/introduction.md).
+Read [how the workflow fits together](https://scbrown.github.io/desire-path/introduction.html).
 
 ## Install
 
@@ -45,7 +45,7 @@ Expected: `dp 0.2.1 (6c5840f)`. If you see something else, check `command -v dp`
 
 From source (Go 1.24+): `go install github.com/scbrown/desire-path/cmd/dp@v0.2.1`,
 then add `$(go env GOPATH)/bin` to PATH and run `dp version`.
-See [installation](docs/book/src/getting-started.md) for macOS, Windows, and source-checkout builds.
+See [installation](https://scbrown.github.io/desire-path/getting-started.html) for macOS, Windows, and source-checkout builds.
 
 ## First success in three commands
 
@@ -64,7 +64,7 @@ read_file 1
 ```
 
 The failure became a queryable pattern without configuring an agent or touching your usual database.
-An optional-metrics diagnostic may also appear on stderr; see [troubleshooting](docs/book/src/getting-started.md#troubleshooting).
+An optional-metrics diagnostic may also appear on stderr; see [troubleshooting](https://scbrown.github.io/desire-path/getting-started.html#troubleshooting).
 
 ## On your own data
 
@@ -78,8 +78,8 @@ After your agent has recorded calls:
 | How do I record the intended mapping? | `dp alias read_file Read` |
 | How do I export the failures? | `dp export --format json` |
 
-An alias records a mapping. Active interception is a separate [pave setup](docs/book/src/commands/pave.md).
-See the [CLI reference](docs/book/src/commands/README.md) for flags and all commands.
+An alias records a mapping. Active interception is a separate [pave setup](https://scbrown.github.io/desire-path/commands/pave.html).
+See the [CLI reference](https://scbrown.github.io/desire-path/commands/) for flags and all commands.
 
 ## Wire it into your agent
 
@@ -92,7 +92,7 @@ dp sources
 
 The installer merges hooks into `~/.claude/settings.json`. It installs ingestion
 for successes and failures, plus signposting and correction hooks. Review that
-file after installation. [Using agents](docs/book/src/integrations/README.md)
+file after installation. [Using agents](https://scbrown.github.io/desire-path/integrations/)
 explains the installed hooks and the Codex, Cursor, and Kiro source plugins.
 
 ## Before you start
@@ -105,13 +105,13 @@ explains the installed hooks and the Codex, Cursor, and Kiro source plugins.
 | Local storage | SQLite at `~/.dp/desires.db`; override with `--db` |
 | Hook capture | A supported agent and `dp` on its PATH |
 
-Keep tool inputs and error messages in mind when sharing [exports](docs/book/src/commands/export.md).
+Keep tool inputs and error messages in mind when sharing [exports](https://scbrown.github.io/desire-path/commands/export.html).
 
 ## What's next
 
-- [Read the book](docs/book/src/introduction.md)
-- [Find every design and reference document](docs/book/src/docs-map.md)
-- [Configure capture for your agent](docs/book/src/integrations/README.md)
+- [Read the book](https://scbrown.github.io/desire-path/introduction.html)
+- [Find every design and reference document](https://scbrown.github.io/desire-path/docs-map.html)
+- [Configure capture for your agent](https://scbrown.github.io/desire-path/integrations/)
 
 ## 🧺 The stack
 
