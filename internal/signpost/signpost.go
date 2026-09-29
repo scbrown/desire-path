@@ -69,18 +69,22 @@ type Event struct {
 	// HookEvent is which event the payload came from, and it QUALIFIES
 	// SignpostShown rather than decorating it.
 	//
-	// SignpostShown means "this hook emitted context", which on PostToolUse is
-	// the same thing as the model receiving it. On PostToolUseFailure it is
-	// NOT: measured on a live crew pane, additionalContext emitted from that
-	// event never reaches the model. Two independent hooks confirm it, each
-	// proven to have run by its own side effect — dp signpost wrote an event
-	// row with signpost_shown true, dp pave-correct recorded a correction
-	// desire — and neither one's text appeared in the session.
+	// SignpostShown means "this hook emitted context". Whether the model then
+	// RECEIVED it depends on the harness version, so the event qualifies it.
 	//
-	// So a row with hook_event=PostToolUseFailure is evidence the hook FIRED,
-	// and is not evidence of delivery. Do not count those rows as shown when
-	// measuring adoption; that conflation is the exact mistake that let "wired
-	// on every pane" stand for weeks as a claim about delivery.
+	// History: an earlier measurement on a live crew pane found that
+	// additionalContext from PostToolUseFailure never reached the model (dp
+	// signpost and dp pave-correct each fired, proven by their side effects,
+	// and neither text appeared). Re-measured on Claude Code 2.1.285
+	// (2026-09-29, aegis-rvpzgo), that no longer holds. A headless probe with
+	// a unique marker per arm, plus a no-hook negative control, received
+	// PostToolUseFailure additionalContext (and exit-2 stderr), and a live
+	// crew pane received a null-case signpost for a real exit-1 grep.
+	//
+	// So for sessions on 2.1.285 or later, a PostToolUseFailure row with
+	// signpost_shown true IS delivered and counts when measuring adoption.
+	// For older sessions it is evidence the hook FIRED, not of delivery.
+	// Measure delivery; do not infer it from wiring.
 	HookEvent              string   `json:"hook_event"`
 	SignpostShown          bool     `json:"signpost_shown"`
 	PayloadMode            bool     `json:"payload_mode"`
@@ -111,9 +115,11 @@ type payload struct {
 // THIS MATTERS MORE THAN IT LOOKS. A literal search that finds NOTHING exits
 // non-zero, so in production it is routed to PostToolUseFailure — and the null
 // predicate, the most valuable trigger signposting has ("your search found
-// nothing, try a semantic one"), was therefore unreachable on every crew pane.
-// Measured: the identical query run twice, once bare (exit 1) and once with
-// `|| true` (exit 0), produced ONE event, from the exit-0 run.
+// nothing, try a semantic one"), used to be unreachable on every crew pane.
+// Measured then: the identical query run twice, once bare (exit 1) and once
+// with `|| true` (exit 0), produced ONE event, from the exit-0 run. Claude
+// Code 2.1.285 delivers PostToolUseFailure context (aegis-rvpzgo), so the
+// failure event is now a live null-case path. See Event.HookEvent.
 func (p payload) hookEventName() string {
 	if len(p.ToolResponse) == 0 && p.Error != "" {
 		return "PostToolUseFailure"
