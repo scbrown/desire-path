@@ -9,7 +9,7 @@ func TestDiscoverIntentFamilies(t *testing.T) {
 	}{
 		{"rg pattern", "rg 'retry backoff' .", FamilyLiteral, "retry backoff", "", true},
 		{"grep skips flags", "grep -rn --color=never handler ./src", FamilyLiteral, "handler", "handler", true},
-		{"regex is not a symbol", `grep -rn 'Allow()\|circuit' .`, FamilyLiteral, `Allow()\|circuit`, "", true},
+		{"regex is not a symbol", `grep -rn 'Allow()\|circuit' .`, FamilyLiteral, "Allow circuit", "", true},
 		{"short pattern is not a symbol", "grep -rn ok .", FamilyLiteral, "ok", "", true},
 		{"find -name", "find . -name '*_handler.go'", FamilyFileFind, "_handler.go", "", true},
 		{"find -iname strips dirs", "find . -iname 'internal/store*.go'", FamilyFileFind, "store.go", "", true},
@@ -74,6 +74,29 @@ func TestInviteNamesTheRoute(t *testing.T) {
 	for _, tt := range tests {
 		if got := (Intent{Family: tt.family}).Invite(); got != tt.want {
 			t.Errorf("%s: got %q want %q", tt.family, got, tt.want)
+		}
+	}
+}
+
+// aegis-f014s8: a grep PATTERN handed verbatim to a semantic engine is a poor
+// query. The literal family asks with the words the pattern names.
+func TestLiteralRegexIsNaturalized(t *testing.T) {
+	cases := map[string]string{
+		`grep -rn 'fn handle_\w+|HandlerError' src`: "fn handle_ HandlerError",
+		`rg '^\s*retry_(count|limit)\s*=' .`:        "retry_ count limit",
+		`grep -n 'Query =|Query:|Query =' x.go`:     "Query",
+		`rg -i "pushgateway.*password" ansible`:     "pushgateway password",
+		`grep -rn 'plain words stay' .`:             "plain words stay",
+		`rg 'DeferredEmbed' src`:                    "DeferredEmbed",
+		`grep -F 'a.b(c)' f`:                        "a b c",
+	}
+	for cmd, want := range cases {
+		in, ok := DiscoverIntent(cmd)
+		if !ok {
+			t.Fatalf("%s: no intent", cmd)
+		}
+		if in.Query != want {
+			t.Errorf("%s: query %q, want %q", cmd, in.Query, want)
 		}
 	}
 }

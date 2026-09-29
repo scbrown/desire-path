@@ -24,8 +24,8 @@ and timeouts stay silent, and the tool contract is never modified.
 
 Environment:
   DP_SIGNPOST_CONDITION          always-signpost | gated-signpost |
-                                 payload-signpost | payload-gated-signpost.
-                                 Anything else never emits.
+                                 payload-signpost | payload-gated-signpost
+                                 (default). Anything else never emits.
   DP_SIGNPOST_PAYLOAD=1          Inject the RESULT of the stack command instead
                                  of the command, on any emitting condition.
   DP_SIGNPOST_PAYLOAD_HITS       Locations injected in payload mode (default 3).
@@ -39,6 +39,14 @@ Environment:
   DP_SIGNPOST_CONDITION=payload-signpost dp signpost < payload.json`,
 	RunE: runSignpost,
 }
+
+// defaultSignpostCondition is what the fleet runs when nothing overrides it.
+// Payload-gated (aegis-f014s8): on a weak literal search the hook INJECTS the
+// top stack results rather than pointing at a command the agent must choose
+// to run. It costs no extra latency, because the gated arm already ran the
+// same search to decide whether to emit. It stays gated, so an ordinary
+// search stays silent.
+const defaultSignpostCondition = "payload-gated-signpost"
 
 var signpostPrefetchCmd = &cobra.Command{Use: "signpost-prefetch", Hidden: true, RunE: runSignpostPrefetch}
 var signpostFetchCmd = &cobra.Command{Use: "signpost-fetch", Hidden: true, RunE: runSignpostFetch}
@@ -117,7 +125,7 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 	timeout := time.Duration(envInt("DP_SIGNPOST_TIMEOUT_MS", 150)) * time.Millisecond
 	cfg := signpost.Config{Threshold: threshold, Timeout: timeout,
 		BobbinURL: env("DP_SIGNPOST_BOBBIN_URL", "http://localhost:3000/search"),
-		LogPath:   env("DP_SIGNPOST_LOG", ""), Condition: env("DP_SIGNPOST_CONDITION", "gated-signpost"),
+		LogPath:   env("DP_SIGNPOST_LOG", ""), Condition: env("DP_SIGNPOST_CONDITION", defaultSignpostCondition),
 		TaskID: os.Getenv("DP_SIGNPOST_TASK_ID"), Model: os.Getenv("DP_SIGNPOST_MODEL_FAMILY"),
 		Repo: os.Getenv("DP_SIGNPOST_REPO"), CacheDir: signpostCacheDir(),
 		Payload:         os.Getenv("DP_SIGNPOST_PAYLOAD") == "1",

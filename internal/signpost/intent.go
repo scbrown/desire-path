@@ -77,13 +77,42 @@ func parseLiteral(tool string, rest []string) (Intent, bool) {
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
 		}
-		in := Intent{Family: FamilyLiteral, Tool: tool, Query: arg}
+		in := Intent{Family: FamilyLiteral, Tool: tool, Query: naturalize(arg)}
 		if identifier.MatchString(arg) {
 			in.SymbolCandidate = arg
 		}
 		return in, true
 	}
 	return Intent{}, false
+}
+
+// regexEscape is a backslash class or escape (\w, \s, \b, \., ...);
+// regexSyntax is every other metacharacter. Both separate words in a pattern.
+var (
+	regexEscape = regexp.MustCompile(`\\.`)
+	regexSyntax = regexp.MustCompile(`[|()^$*+?{}\[\].=:;,<>"'!]`)
+)
+
+// naturalize turns a grep PATTERN into the words it names, so the semantic
+// side query asks about them rather than about regex syntax (aegis-f014s8):
+// `^\s*retry_(count|limit)\s*=` asks about "retry_ count limit". Words keep
+// their case and first-seen order; a repeated word is asked once. A pattern
+// with no words left keeps its original text.
+func naturalize(pattern string) string {
+	text := regexEscape.ReplaceAllString(pattern, " ")
+	text = regexSyntax.ReplaceAllString(text, " ")
+	seen := map[string]bool{}
+	var words []string
+	for _, w := range strings.Fields(text) {
+		if key := strings.ToLower(w); !seen[key] {
+			seen[key] = true
+			words = append(words, w)
+		}
+	}
+	if len(words) == 0 {
+		return pattern
+	}
+	return strings.Join(words, " ")
 }
 
 // nameFlags carry the filename being looked for. pathFlags match the whole
