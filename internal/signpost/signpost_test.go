@@ -107,7 +107,7 @@ func TestPayloadArmInjectsResultsAndRecordsPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(out)
-	for _, want := range []string{"internal/widget.go:12", "func Widget() error {", "2 of 9"} {
+	for _, want := range []string{"internal/widget.go:12", "func Widget() error {", "2 of 9", payloadFrame} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("payload missing %q: %s", want, text)
 		}
