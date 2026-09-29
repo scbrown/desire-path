@@ -74,10 +74,22 @@ func DiscoverIntent(command string) (Intent, bool) {
 func parseLiteral(tool string, rest []string) (Intent, bool) {
 	for _, arg := range rest {
 		arg = strings.Trim(arg, "'\"")
+		if inverted(arg) {
+			// -v selects the lines that do NOT match: an exclusion filter,
+			// not a question the stack can answer.
+			return Intent{}, false
+		}
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
 		}
-		in := Intent{Family: FamilyLiteral, Tool: tool, Query: naturalize(arg)}
+		query := naturalize(arg)
+		if query == "" {
+			// Punctuation-only pattern (a diff-header filter, a rule of
+			// dashes): there is nothing to ask. Observed live: '^(\+\+\+|---)'
+			// injected a search for "-".
+			return Intent{}, false
+		}
+		in := Intent{Family: FamilyLiteral, Tool: tool, Query: query}
 		if identifier.MatchString(arg) {
 			in.SymbolCandidate = arg
 		}
@@ -89,30 +101,42 @@ func parseLiteral(tool string, rest []string) (Intent, bool) {
 // regexEscape is a backslash class or escape (\w, \s, \b, \., ...);
 // regexSyntax is every other metacharacter. Both separate words in a pattern.
 var (
-	regexEscape = regexp.MustCompile(`\\.`)
-	regexSyntax = regexp.MustCompile(`[|()^$*+?{}\[\].=:;,<>"'!]`)
+	regexEscape     = regexp.MustCompile(`\\.`)
+	regexQuantifier = regexp.MustCompile(`\{\d*,?\d*\}`)
+	hasWordChar     = regexp.MustCompile(`[A-Za-z0-9]`)
+	regexSyntax     = regexp.MustCompile(`[|()^$*+?{}\[\].=:;,<>"'!]`)
 )
 
 // naturalize turns a grep PATTERN into the words it names, so the semantic
 // side query asks about them rather than about regex syntax (aegis-f014s8):
 // `^\s*retry_(count|limit)\s*=` asks about "retry_ count limit". Words keep
 // their case and first-seen order; a repeated word is asked once. A pattern
-// with no words left keeps its original text.
+// with no word left yields "", which asks nothing.
 func naturalize(pattern string) string {
-	text := regexEscape.ReplaceAllString(pattern, " ")
+	text := regexQuantifier.ReplaceAllString(pattern, " ")
+	text = regexEscape.ReplaceAllString(text, " ")
 	text = regexSyntax.ReplaceAllString(text, " ")
 	seen := map[string]bool{}
 	var words []string
 	for _, w := range strings.Fields(text) {
+		if !hasWordChar.MatchString(w) {
+			continue
+		}
 		if key := strings.ToLower(w); !seen[key] {
 			seen[key] = true
 			words = append(words, w)
 		}
 	}
-	if len(words) == 0 {
-		return pattern
-	}
 	return strings.Join(words, " ")
+}
+
+// inverted reports a grep/rg invert-match flag: --invert-match, or a short
+// flag cluster (-v, -rnv, -vE) that contains v.
+func inverted(arg string) bool {
+	if arg == "--invert-match" {
+		return true
+	}
+	return len(arg) > 1 && arg[0] == '-' && arg[1] != '-' && strings.ContainsRune(arg[1:], 'v')
 }
 
 // nameFlags carry the filename being looked for. pathFlags match the whole

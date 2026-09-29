@@ -100,3 +100,26 @@ func TestLiteralRegexIsNaturalized(t *testing.T) {
 		}
 	}
 }
+
+// Observed live on dp 0.3.1 (sattler): `grep -vE "^(\+\+\+|---)"` injected a
+// bobbin search for "-". A pattern with no word left asks nothing, and an
+// inverted match (-v / --invert-match) is an exclusion, not a search intent.
+func TestPunctuationOnlyAndInvertedPatternsAskNothing(t *testing.T) {
+	for _, cmd := range []string{
+		`grep -vE "^(\+\+\+|---)" f.diff`,
+		`grep -E '^(\+\+\+|---)' f.diff`,
+		`rg '[-=]{3,}' .`,
+		`grep -v retry log.txt`,
+		`grep -rnv 'TODO' src`,
+		`rg --invert-match TODO src`,
+	} {
+		if in, ok := DiscoverIntent(cmd); ok {
+			t.Errorf("%s: want no intent, got %+v", cmd, in)
+		}
+	}
+	// Control: an ordinary pattern still asks, and a flag cluster without v
+	// is not mistaken for an inversion.
+	if in, ok := DiscoverIntent(`grep -rnE 'retry_(count|limit)' src`); !ok || in.Query != "retry_ count limit" {
+		t.Fatalf("control lost: %+v %v", in, ok)
+	}
+}
