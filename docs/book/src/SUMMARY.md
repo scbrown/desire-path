@@ -35,6 +35,7 @@
 - [dp similar](./commands/similar.md)
 - [dp alias](./commands/alias.md)
 - [dp pave](./commands/pave.md)
+- [dp legend-refresh (entity legend)](./commands/legend.md)
 - [dp config](./commands/config.md)
 
 ---
