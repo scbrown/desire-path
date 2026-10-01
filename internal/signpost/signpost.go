@@ -154,6 +154,28 @@ type hookOutput struct {
 	} `json:"hookSpecificOutput"`
 }
 
+// ContextOf returns the hook event name and additionalContext carried by a
+// Process output, so a later stage of the same hook can see what was already
+// spent from the per-call budget. Empty output returns empty strings.
+func ContextOf(out []byte) (hookEvent, text string) {
+	if len(out) == 0 {
+		return "", ""
+	}
+	var o hookOutput
+	if json.Unmarshal(out, &o) != nil {
+		return "", ""
+	}
+	return o.HookSpecificOutput.HookEventName, o.HookSpecificOutput.AdditionalContext
+}
+
+// WithContext builds the hook output for one combined additionalContext.
+func WithContext(hookEvent, text string) ([]byte, error) {
+	var o hookOutput
+	o.HookSpecificOutput.HookEventName = hookEvent
+	o.HookSpecificOutput.AdditionalContext = text
+	return json.Marshal(o)
+}
+
 // Searcher answers one intent from the Quipu stack. It replaced a
 // query-string-in, count-out function when payload mode landed: pointing at a
 // command needs a count, RUNNING it needs the result.

@@ -140,6 +140,7 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 	if event.EventID != "" {
 		_ = signpost.AppendEvent(cfg.LogPath, event)
 	}
+	out = withLegend(raw, out)
 	if len(out) > 0 {
 		_, _ = os.Stdout.Write(append(out, '\n'))
 	}
