@@ -2,6 +2,7 @@ package quipufailure
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -101,5 +102,60 @@ func TestExpectedEmptyRequiresExplicitEvidence(t *testing.T) {
 				t.Fatalf("got %s/%s, want %s/%s", ev.Outcome, ev.ErrorClass, tc.outcome, tc.class)
 			}
 		})
+	}
+}
+
+func TestFailureOverridesOtherSuccessfulEvidence(t *testing.T) {
+	f := &source.Fields{ToolName: "quipu_query", Extra: map[string]json.RawMessage{"tool_response": json.RawMessage(`{"rows":[]}`), "result": json.RawMessage(`{"error":"timeout"}`)}}
+	got, _ := Prepare(f, nil, "")
+	if got.Error == "" {
+		t.Fatal("success wrapper hid explicit failure")
+	}
+}
+
+func TestNormalizationBounded(t *testing.T) {
+	m := map[string]any{}
+	for i := 0; i < 10000; i++ {
+		m[strings.Repeat("x", i%50)+fmt.Sprint(i)] = "secret"
+	}
+	raw, _ := json.Marshal(m)
+	f := &source.Fields{ToolName: "quipu_query", ToolInput: raw}
+	got, _ := Prepare(f, nil, "")
+	if len(got.Extra["quipu_review"]) > 16384 {
+		t.Fatalf("unbounded review: %d bytes", len(got.Extra["quipu_review"]))
+	}
+}
+
+func TestRetryFingerprintRequiresExactInputAndSession(t *testing.T) {
+	event := func(input, session string) Event {
+		f := &source.Fields{ToolName: "quipu_query", InstanceID: session, ToolInput: json.RawMessage(input)}
+		got, _ := Prepare(f, nil, "")
+		var ev Event
+		if err := json.Unmarshal(got.Extra["quipu_review"], &ev); err != nil {
+			t.Fatal(err)
+		}
+		return ev
+	}
+	a := event(`{"query":"SELECT ?s WHERE { ?s ?p \"secret-a\" }"}`, "session-a")
+	b := event(`{"query":"SELECT ?s WHERE { ?s ?p \"secret-b\" }"}`, "session-a")
+	c := event(`{"query":"SELECT ?s WHERE { ?s ?p \"secret-a\" }"}`, "session-b")
+	if a.InputID != b.InputID {
+		t.Fatal("same structural pattern must cluster")
+	}
+	if a.RetryID == "" || a.RetryID == b.RetryID || a.RetryID == c.RetryID {
+		t.Fatal("retry identities crossed literal/session boundary")
+	}
+	if a.RetryID != event(`{"query":"SELECT ?s WHERE { ?s ?p \"secret-a\" }"}`, "session-a").RetryID {
+		t.Fatal("exact retry not stable")
+	}
+	if event(`{"query":"SELECT ?s {}"}`, "").RetryID != "" {
+		t.Fatal("unknown session asserted retry identity")
+	}
+	f := &source.Fields{ToolName: "Bash", InstanceID: "known", ToolInput: json.RawMessage(`{"command":"curl https://graph.example/query"}`)}
+	got, _ := Prepare(f, []string{"graph.example"}, "")
+	var ev Event
+	json.Unmarshal(got.Extra["quipu_review"], &ev)
+	if ev.RetryID != "" {
+		t.Fatal("opaque HTTP input asserted retry identity")
 	}
 }

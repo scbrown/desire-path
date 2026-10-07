@@ -3,6 +3,7 @@
 package quipufailure
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -27,7 +28,12 @@ type Event struct {
 	InputPattern string `json:"input_pattern"`
 	PatternID    string `json:"pattern_id,omitempty"`
 	InputID      string `json:"input_id"`
+	RetryID      string `json:"retry_id,omitempty"`
 }
+
+const maxInputBytes = 64 << 10
+const maxResponseBytes = 1 << 20
+const maxPatternBytes = 8192
 
 var toolRE = regexp.MustCompile(`(?:^|__)quipu_([a-z_]+)$`)
 var urlRE = regexp.MustCompile(`https?://[^\s'"<>]+`)
@@ -48,7 +54,7 @@ func Prepare(f *source.Fields, hosts []string, agent string) (*source.Fields, bo
 		empty, nonempty := false, false
 		for _, key := range []string{"tool_response", "tool_output", "result", "aggregated_output"} {
 			var v any
-			if json.Unmarshal(f.Extra[key], &v) == nil {
+			if len(f.Extra[key]) <= maxResponseBytes && json.Unmarshal(f.Extra[key], &v) == nil {
 				e, n := cardinalityEvidence(v, 0)
 				empty, nonempty = empty || e, nonempty || n
 			}
@@ -58,6 +64,9 @@ func Prepare(f *source.Fields, hosts []string, agent string) (*source.Fields, bo
 		}
 	}
 	pattern := normalize(input, "", 0)
+	if len(pattern) > maxPatternBytes {
+		pattern = "<pattern-too-large>"
+	}
 	session := "unknown"
 	if f.InstanceID != "" {
 		session = digest(f.InstanceID)
@@ -66,6 +75,21 @@ func Prepare(f *source.Fields, hosts []string, agent string) (*source.Fields, bo
 		agent = "unknown"
 	}
 	event := Event{Version: 1, Operation: op, Agent: agent, Session: session, Outcome: outcome, ErrorClass: class, InputPattern: pattern, InputID: digest(op + "\n" + pattern)}
+	// A keyed fingerprint permits exact observed retries without storing inputs.
+	// Unknown sessions and opaque HTTP bodies cannot establish an exact retry.
+	if f.InstanceID != "" && input != nil && pattern != "<pattern-too-large>" {
+		m, isMap := input.(map[string]any)
+		_, opaque := m["shell"]
+		if !isMap || !opaque {
+			canonical, err := json.Marshal(input)
+			if err == nil && len(canonical) <= maxInputBytes {
+				h := hmac.New(sha256.New, []byte(f.InstanceID))
+				h.Write([]byte(op + "\n"))
+				h.Write(canonical)
+				event.RetryID = hex.EncodeToString(h.Sum(nil))
+			}
+		}
+	}
 	if outcome == "failure" {
 		event.PatternID = digest(op + "\n" + class + "\n" + pattern)
 	}
@@ -82,7 +106,9 @@ func digest(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeT
 
 func operation(f *source.Fields, hosts []string) (string, any, bool) {
 	var input any
-	_ = json.Unmarshal(f.ToolInput, &input)
+	if len(f.ToolInput) <= maxInputBytes {
+		_ = json.Unmarshal(f.ToolInput, &input)
+	}
 	name := f.ToolName
 	if name == "mcp_tool_call" {
 		var tool string
@@ -93,7 +119,7 @@ func operation(f *source.Fields, hosts []string) (string, any, bool) {
 		} else {
 			return "", nil, false
 		}
-		if raw, ok := f.Extra["arguments"]; ok {
+		if raw, ok := f.Extra["arguments"]; ok && len(raw) <= maxInputBytes {
 			_ = json.Unmarshal(raw, &input)
 		}
 	}
@@ -132,7 +158,7 @@ func operation(f *source.Fields, hosts []string) (string, any, bool) {
 				// Shell is opaque: preserve no headers, literals, shell substitutions or paths.
 				// A JSON body can be supplied separately by an observer as review_input.
 				var body any
-				if raw, ok := f.Extra["review_input"]; ok {
+				if raw, ok := f.Extra["review_input"]; ok && len(raw) <= maxInputBytes {
 					_ = json.Unmarshal(raw, &body)
 				}
 				if body == nil {
@@ -151,6 +177,9 @@ func normalize(v any, key string, depth int) string {
 	}
 	switch x := v.(type) {
 	case map[string]any:
+		if len(x) > 32 {
+			return "<object-too-wide>"
+		}
 		keys := make([]string, 0, len(x))
 		for k := range x {
 			keys = append(keys, k)
@@ -166,6 +195,9 @@ func normalize(v any, key string, depth int) string {
 				parts = append(parts, "<field>:<redacted>")
 			}
 		}
+		if len(strings.Join(parts, ",")) > maxPatternBytes {
+			return "<pattern-too-large>"
+		}
 		return "{" + strings.Join(parts, ",") + "}"
 	case []any:
 		parts := []string{}
@@ -175,6 +207,9 @@ func normalize(v any, key string, depth int) string {
 				break
 			}
 			parts = append(parts, normalize(item, key, depth+1))
+			if len(strings.Join(parts, ",")) > maxPatternBytes {
+				return "<pattern-too-large>"
+			}
 		}
 		return "[" + strings.Join(parts, ",") + "]"
 	case string:
@@ -221,12 +256,13 @@ func normalize(v any, key string, depth int) string {
 }
 
 func classify(f *source.Fields) (string, string) {
+	observed := false
 	if f.Error != "" {
 		return "failure", errorClass(f.Error, "tool-error")
 	}
 	for _, key := range []string{"tool_response", "tool_output", "result", "aggregated_output"} {
 		raw, ok := f.Extra[key]
-		if !ok {
+		if !ok || len(raw) > maxResponseBytes {
 			continue
 		}
 		var v any
@@ -234,15 +270,19 @@ func classify(f *source.Fields) (string, string) {
 			continue
 		}
 		status, class := response(v, 0)
-		if status != "unknown" {
+		if status == "failure" {
 			return status, class
 		}
+		observed = observed || status == "success"
 	}
 	if raw, ok := f.Extra["exit_code"]; ok {
 		var code int
 		if json.Unmarshal(raw, &code) == nil && code != 0 {
 			return "failure", "command-exit"
 		}
+	}
+	if observed {
+		return "success", ""
 	}
 	return "unknown", ""
 }

@@ -13,9 +13,11 @@ The normalized input pattern plus operation and error class identify a review
 pattern. A scheduled consumer of `dp export --type invocations` files one review
 issue per pattern, adds occurrence IDs to that issue, and emits a weekly digest.
 Keep this issue-tracker adapter outside the portable collector. Never invoke an
-issue tracker from the tool hook. A same-session subsequent successful call with
-the same normalized input shape is a recovery candidate, not proof of an exact
-retry or that a product defect was fixed. Unknown sessions cannot prove recovery.
+issue tracker from the tool hook. Exact retry evidence requires a strictly later successful call in the same
+observed session with a matching session-keyed canonical-input fingerprint.
+Matching normalized shapes alone is only a candidate. Unknown sessions or opaque
+HTTP inputs cannot establish an exact retry. Even an exact successful retry does
+not prove that a product defect was fixed. Fingerprints contain no raw inputs.
 
 HTTP detection needs configured `DP_QUIPU_HTTP_HOSTS` (comma-separated hostnames)
 or `QUIPU_SERVER`. It is observation only: no command is executed or retried.
@@ -28,3 +30,7 @@ Validation: isolated installed-binary baseline, envelope/semantic-negative tests
 credential-bearing fixtures with negative persistence assertions, and a repeated
 baseline against the candidate. Fleet activation and scheduled bug/digest
 reporting require separately reviewed configuration and observed scheduled runs.
+
+Resource limits: input JSON64KiB, response JSON1MiB, normalized patterns8KiB,
+object width32, array width8, nesting8. Exceeded bounds retain unknown/redacted
+structure rather than raw text. Explicit failures override successful wrappers.
