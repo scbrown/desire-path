@@ -23,4 +23,4 @@ See [Using agents](../integrations/README.md) for the complete hook list and
 | `--skip-signpost-url-check` | Explicitly install before the backend is available |
 
 Use `dp init --help` to inspect the installed version's flags. `--track-all` and
-`--claude-code` are not flags in v0.2.1. Ingestion already captures both outcomes.
+`--claude-code` are not flags in v0.4.0. Ingestion already captures both outcomes.
