@@ -37,3 +37,14 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^chore:"
+
+release:
+  # release-please opens a release PR. Merging it creates the tag and a DRAFT release
+  # named after the tag. goreleaser then runs in the SAME workflow run (a tag made with
+  # GITHUB_TOKEN cannot trigger another workflow), finds that draft by name, uploads the
+  # archives into it, and only then un-drafts it (draft: false, so PublishRelease runs
+  # last). CD tracks the latest PUBLISHED release, so it never sees a release without its
+  # archives. mode keep-existing keeps release-please's notes.
+  use_existing_draft: true
+  draft: false
+  mode: keep-existing
