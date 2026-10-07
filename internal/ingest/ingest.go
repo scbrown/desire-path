@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/scbrown/desire-path/internal/analyze"
 	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/model"
+	"github.com/scbrown/desire-path/internal/quipufailure"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/scbrown/desire-path/internal/transcript"
@@ -49,6 +52,14 @@ func Ingest(ctx context.Context, s store.Store, raw []byte, sourceName string) (
 // transcript is parsed to enrich the invocation with turn context (turn_id,
 // turn_sequence, turn_length).
 func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sourceName string) (model.Invocation, error) {
+	quipuCaptured := false
+	if os.Getenv("DP_QUIPU_REVIEW") == "1" {
+		hosts := strings.Split(os.Getenv("DP_QUIPU_HTTP_HOSTS"), ",")
+		if server, err := url.Parse(os.Getenv("QUIPU_SERVER")); err == nil && server.Hostname() != "" {
+			hosts = append(hosts, server.Hostname())
+		}
+		fields, quipuCaptured = quipufailure.Prepare(fields, hosts, os.Getenv("DP_AGENT"))
+	}
 	inv, err := toInvocation(fields, sourceName)
 	if err != nil {
 		return model.Invocation{}, err
@@ -61,7 +72,9 @@ func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sou
 	}
 
 	// Detect recovery: successful invocation for a tool that previously failed
-	if !inv.IsError {
+	// Legacy tool-only recovery matching crosses sessions and input shapes.
+	// Quipu review consumers derive explicitly scoped recovery candidates instead.
+	if !inv.IsError && !quipuCaptured {
 		_ = s.DetectAndRecordRecovery(ctx, inv) // best-effort
 	}
 

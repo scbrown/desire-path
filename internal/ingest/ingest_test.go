@@ -824,3 +824,44 @@ func TestExtraString(t *testing.T) {
 		})
 	}
 }
+
+func TestQuipuReviewSanitizedBeforeBothWrites(t *testing.T) {
+	t.Setenv("DP_QUIPU_REVIEW", "1")
+	t.Setenv("DP_AGENT", "reviewer")
+	f := &source.Fields{ToolName: "mcp__homelab__quipu_query", InstanceID: "secret-session-marker", CWD: "secret-workdir-marker", ToolInput: json.RawMessage(`{"query":"SELECT ?secretVar WHERE { <https://secret.example/> ?p \"secret-literal-marker\" }"}`), Extra: map[string]json.RawMessage{
+		"tool_response":   json.RawMessage(`{"isError":true,"content":[{"type":"text","text":"parse error at secret-literal-marker"}]}`),
+		"transcript_path": json.RawMessage(`"secret-transcript-marker"`),
+	}}
+	s := &fakeStore{}
+	inv, err := IngestFields(context.Background(), s, f, "claude-code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inv.IsError || len(s.recorded) != 1 || len(s.desires) != 1 {
+		t.Fatalf("lost failure: inv=%+v writes=%d/%d", inv, len(s.recorded), len(s.desires))
+	}
+	encoded, err := json.Marshal([]any{s.recorded, s.desires})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"secret-session-marker", "secret-workdir-marker", "secretVar", "secret.example", "secret-literal-marker", "secret-transcript-marker"} {
+		if strings.Contains(string(encoded), marker) {
+			t.Fatalf("persisted %q", marker)
+		}
+	}
+	if !strings.Contains(string(encoded), "quipu_review") || !strings.Contains(string(encoded), "reviewer") {
+		t.Fatal("safe metadata absent")
+	}
+}
+
+func TestQuipuReviewRemainsOptIn(t *testing.T) {
+	t.Setenv("DP_QUIPU_REVIEW", "")
+	f := &source.Fields{ToolName: "mcp__homelab__quipu_query", InstanceID: "session-control", Extra: map[string]json.RawMessage{"tool_response": json.RawMessage(`{"isError":true}`)}}
+	inv, err := IngestFields(context.Background(), &fakeStore{}, f, "claude-code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.IsError || inv.InstanceID != "session-control" {
+		t.Fatal("disabled path changed existing behavior")
+	}
+}
