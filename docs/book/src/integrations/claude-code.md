@@ -7,7 +7,7 @@ dp init --source claude-code
 ```
 
 The default installer adds ingestion, signposting, and correction hooks;
-[Using agents](README.md) lists them. Inspect `~/.claude/settings.json` after
+[Using agents](index.md) lists them. Inspect `~/.claude/settings.json` after
 installation. Existing settings are merged rather than replaced.
 
 ## Capture-only configuration

@@ -8,7 +8,7 @@ dp init --source claude-code
 
 The Claude Code installer merges `~/.claude/settings.json` and installs ingestion
 for successful and failed tool calls, plus search-guidance and correction hooks.
-See [Using agents](../integrations/README.md) for the complete hook list and
+See [Using agents](../integrations/index.md) for the complete hook list and
 [capture-only configuration](../integrations/claude-code.md) for the minimal alternative.
 
 ## Flags
