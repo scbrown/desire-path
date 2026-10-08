@@ -12,8 +12,8 @@ func TestHookBundleIsDPsOwn(t *testing.T) {
 	if b["schema"] != "st.hook-bundle/1" || b["name"] != "desire-path" || b["owner"] != "desire-path" {
 		t.Fatalf("bundle identity wrong: %v %v %v", b["schema"], b["name"], b["owner"])
 	}
-	if len(bundleHooksFor(b, "claude")) != 6 {
-		t.Fatalf("claude hooks = %d, want the full set of 6", len(bundleHooksFor(b, "claude")))
+	if len(bundleHooksFor(b, "claude")) != 9 {
+		t.Fatalf("claude hooks = %d, want the full set of 9", len(bundleHooksFor(b, "claude")))
 	}
 	if len(bundleHooksFor(b, "codex")) == 0 || len(notifyArgv(b)) == 0 {
 		t.Fatal("codex hooks and notify must be declared")

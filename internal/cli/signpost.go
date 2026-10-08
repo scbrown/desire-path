@@ -131,6 +131,7 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 		Payload:         os.Getenv("DP_SIGNPOST_PAYLOAD") == "1",
 		PayloadHits:     envInt("DP_SIGNPOST_PAYLOAD_HITS", signpost.DefaultPayloadHits),
 		PayloadMaxBytes: envInt("DP_SIGNPOST_PAYLOAD_MAX_BYTES", signpost.DefaultPayloadMaxBytes)}
+	cfg.CaptureRefs = os.Getenv("DP_SIGNPOST_ADOPTION_DIR") != ""
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 	out, event, err := signpost.Process(ctx, raw, cfg, signpost.HTTPSearcher(cfg.BobbinURL, cfg.Repo, searchMode(), timeout))
@@ -139,6 +140,9 @@ func runSignpost(cmd *cobra.Command, _ []string) error {
 	}
 	if event.EventID != "" {
 		_ = signpost.AppendEvent(cfg.LogPath, event)
+	}
+	if event.SignpostShown && event.PayloadMode && len(event.PayloadPaths) > 0 {
+		publishAdoption(ctx, raw, event)
 	}
 	out = withLegend(raw, out)
 	if len(out) > 0 {
