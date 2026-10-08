@@ -1,8 +1,8 @@
 # Docs map
 
 The [user guide](introduction.md) is built from `docs/book`. Start with
-[getting started](getting-started.md), [agent setup](integrations/README.md),
-[commands](commands/README.md), or [configuration](configuration.md).
+[getting started](getting-started.md), [agent setup](integrations/index.md),
+[commands](commands/index.md), or [configuration](configuration.md).
 
 ## Supporting documents
 
