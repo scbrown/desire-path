@@ -456,5 +456,5 @@ These would require architectural changes (client/server split, service discover
 
 - Read the [source code](https://github.com/scbrown/desire-path)
 - Write a [source plugin](./integrations/writing-plugins.md)
-- Explore the [command reference](./commands/README.md)
+- Explore the [command reference](./commands/index.md)
 - Check out the [Claude Code integration](./integrations/claude-code.md)

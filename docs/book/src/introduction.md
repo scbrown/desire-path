@@ -37,12 +37,12 @@ without installing any hooks.
 Signposting observes weak searches and can offer a stack tool command. Its
 evaluation contract, limitations, and measurements are in the
 [signposting plan](https://github.com/scbrown/desire-path/blob/main/docs/plans/009-signposting-eval.md) and
-[evaluation chapters](evaluations/README.md). It is separate from basic capture.
+[evaluation chapters](evaluations/index.md). It is separate from basic capture.
 
 ## Where to go next
 
 - [Getting started](getting-started.md): install and produce a first result.
-- [Using agents](integrations/README.md): inspect and configure hook capture.
+- [Using agents](integrations/index.md): inspect and configure hook capture.
 - [Architecture](architecture.md): storage and plugin design.
 - [The stack](stack.md): how the tools fit together.
 - [Docs map](docs-map.md): design notes, historical plans, and supporting files.

@@ -68,4 +68,4 @@ The v0.4.0 CLI also lists `sources`, `version`, `turns`, `recoveries`, `struggli
 [entity legend](./legend.md), a second stage of `signpost`.
 Use `dp <command> --help` for their version-specific options.
 The [docs map](../docs-map.md) routes their design notes and the
-[evaluation chapters](../evaluations/README.md) describe signposting experiments.
+[evaluation chapters](../evaluations/index.md) describe signposting experiments.

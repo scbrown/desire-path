@@ -68,7 +68,7 @@ three commands again to get another isolated database and the same output.
 
 ## Connect your agent
 
-Follow [Using agents](integrations/README.md). Once calls accumulate, try
+Follow [Using agents](integrations/index.md). Once calls accumulate, try
 `dp paths --top 5`, `dp inspect read_file`, and `dp similar read_file`.
 `dp alias read_file Read` records an intended mapping; it does not by itself
 install interception. See [pave](commands/pave.md) for that separate setup.

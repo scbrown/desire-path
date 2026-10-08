@@ -169,4 +169,4 @@ Environment variables take precedence over config file settings but are overridd
 - If you're testing or developing, point `--db` at a temporary database to avoid polluting your real data
 - The config file is optional—all keys have sensible defaults
 
-For command-specific options, see the [Command Reference](./commands/README.md).
+For command-specific options, see the [Command Reference](./commands/index.md).
