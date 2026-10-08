@@ -47,10 +47,14 @@ type Config struct {
 	Payload         bool
 	PayloadHits     int
 	PayloadMaxBytes int
+	// CaptureRefs retains repository identity for prospective observation only.
+	// It does not change payload text or the legacy event JSONL contract.
+	CaptureRefs bool
 }
 
 // Event is the stable JSONL contract consumed by the evaluation harness.
 type Event struct {
+	PayloadRefs       []Hit     `json:"-"`
 	EventID           string    `json:"event_id"`
 	Timestamp         time.Time `json:"timestamp"`
 	SessionID         string    `json:"session_id,omitempty"`
@@ -130,6 +134,7 @@ func (p payload) hookEventName() string {
 // Hit is one stack answer: where it is, and enough of it to judge without
 // opening the file.
 type Hit struct {
+	Repo    string `json:"repo,omitempty"`
 	Path    string `json:"path"`
 	Line    int    `json:"line"`
 	Snippet string `json:"snippet,omitempty"`
@@ -259,6 +264,16 @@ func Process(ctx context.Context, raw []byte, cfg Config, search Searcher) ([]by
 		var paths []string
 		injected, paths = renderPayload(intent, predicate, cardinality, command, result, cfg)
 		e.PayloadPaths = paths
+		if cfg.CaptureRefs {
+			// renderPayload stops at the first entry that cannot fit, so these
+			// are exactly the named locations, including duplicate filenames.
+			e.PayloadRefs = append([]Hit(nil), result.Hits[:len(paths)]...)
+			for i := range e.PayloadRefs {
+				if e.PayloadRefs[i].Repo == "" {
+					e.PayloadRefs[i].Repo = cfg.Repo
+				}
+			}
+		}
 		e.PayloadBytes = len(injected)
 	} else {
 		injected = fmt.Sprintf("Signpost (%s): %s returned %d line(s). %s: %s",
@@ -520,6 +535,7 @@ func searchQuery(ctx context.Context, client *http.Client, endpoint, repo, mode 
 	var resp struct {
 		Count   int `json:"count"`
 		Results []struct {
+			Repo           string `json:"repo"`
 			FilePath       string `json:"file_path"`
 			Name           string `json:"name"`
 			StartLine      int    `json:"start_line"`
@@ -535,7 +551,7 @@ func searchQuery(ctx context.Context, client *http.Client, endpoint, repo, mode 
 		if snippet == "" {
 			snippet = r.Name
 		}
-		out.Hits = append(out.Hits, Hit{Path: r.FilePath, Line: r.StartLine, Snippet: snippet})
+		out.Hits = append(out.Hits, Hit{Repo: r.Repo, Path: r.FilePath, Line: r.StartLine, Snippet: snippet})
 	}
 	return out, nil
 }

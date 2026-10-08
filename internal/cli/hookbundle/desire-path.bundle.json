@@ -64,6 +64,32 @@
     "claude",
     "codex"
    ]
+  },
+  {
+   "event": "PreToolUse",
+   "matcher": ".*",
+   "command": "dp adoption-hook --phase pre",
+   "harnesses": [
+    "claude",
+    "codex"
+   ]
+  },
+  {
+   "event": "PostToolUse",
+   "matcher": ".*",
+   "command": "dp adoption-hook --phase post",
+   "harnesses": [
+    "claude",
+    "codex"
+   ]
+  },
+  {
+   "event": "PostToolUseFailure",
+   "matcher": ".*",
+   "command": "dp adoption-hook --phase post",
+   "harnesses": [
+    "claude"
+   ]
   }
  ],
  "codex_notify": [
