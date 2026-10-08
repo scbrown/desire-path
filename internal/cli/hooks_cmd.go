@@ -185,6 +185,37 @@ func notifyArgv(b map[string]any) []any {
 	return n
 }
 
+// notifyEqual compares two notify argvs element by element, so argument
+// boundaries count: ["a b", "c"] is not ["a", "b c"] (ian, desire-path#18).
+func notifyEqual(a any, b []any) bool {
+	as, ok := a.([]any)
+	if !ok || len(as) != len(b) || len(b) == 0 {
+		return false
+	}
+	for i := range as {
+		x, xok := as[i].(string)
+		y, yok := b[i].(string)
+		if !xok || !yok || x != y {
+			return false
+		}
+	}
+	return true
+}
+
+// notifyState is the codex notify slot's state for dp: "absent", "ours", or
+// "foreign" (another tool owns the single slot).
+func notifyState(cfg map[string]any, b map[string]any) string {
+	cur, exists := cfg["notify"]
+	switch {
+	case !exists:
+		return "absent"
+	case notifyEqual(cur, notifyArgv(b)):
+		return "ours"
+	default:
+		return "foreign"
+	}
+}
+
 func hooksConfigPath(harness string, project bool) string {
 	home, _ := os.UserHomeDir()
 	switch {
@@ -359,11 +390,12 @@ func runHooks(action string) error {
 		case "install":
 			n := mergeHooks(cfg, b, h)
 			if h == "codex" && len(notifyArgv(b)) > 0 {
-				if cur, exists := cfg["notify"]; !exists {
+				switch notifyState(cfg, b) {
+				case "absent":
 					cfg["notify"] = notifyArgv(b)
 					n++
-				} else if fmt.Sprint(cur) != fmt.Sprint(notifyArgv(b)) {
-					fmt.Printf("codex: notify is owned by another tool; left unchanged: %v\n", cur)
+				case "foreign":
+					fmt.Printf("codex: notify is owned by another tool; left unchanged: %q\n", cfg["notify"])
 				}
 			}
 			if n > 0 {
@@ -374,7 +406,7 @@ func runHooks(action string) error {
 			fmt.Printf("%s: added %d hook(s) to %s\n", h, n, path)
 		case "uninstall":
 			n := removeHooks(cfg, b, h)
-			if h == "codex" && fmt.Sprint(cfg["notify"]) == fmt.Sprint(notifyArgv(b)) {
+			if h == "codex" && notifyState(cfg, b) == "ours" {
 				delete(cfg, "notify")
 				n++
 			}
@@ -386,7 +418,19 @@ func runHooks(action string) error {
 			fmt.Printf("%s: removed %d hook(s) from %s\n", h, n, path)
 		default:
 			have, want := presentHooks(cfg, b, h)
-			fmt.Printf("%s: %d/%d dp hook(s) in %s\n", h, have, want, path)
+			note := ""
+			if h == "codex" && len(notifyArgv(b)) > 0 {
+				// notify is part of dp's codex install: a foreign-owned slot is
+				// NOT installed, and must not read green (ian, desire-path#18).
+				want++
+				switch notifyState(cfg, b) {
+				case "ours":
+					have++
+				case "foreign":
+					note = " (notify is owned by another tool)"
+				}
+			}
+			fmt.Printf("%s: %d/%d dp hook(s) in %s%s\n", h, have, want, path, note)
 			ok = ok && have == want
 		}
 	}

@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -95,5 +96,38 @@ func TestCodexConfigRoundTripsThroughTOML(t *testing.T) {
 	}
 	if _, err := os.Stat(path + ".bak-dp"); err != nil {
 		t.Fatal("no backup kept")
+	}
+}
+
+func TestNotifyComparesArgvBoundaries(t *testing.T) {
+	if notifyEqual([]any{"a b", "c"}, []any{"a", "b c"}) {
+		t.Fatal("argv boundaries ignored")
+	}
+	if !notifyEqual([]any{"a", "b"}, []any{"a", "b"}) {
+		t.Fatal("equal argv not equal")
+	}
+}
+
+func TestNotifyStateNeverTakesOrDropsAForeignSlot(t *testing.T) {
+	b := HookBundle()
+	ours := notifyArgv(b)
+	// A foreign argv that Sprint-formats like ours would have fooled the old check.
+	var joined []string
+	for _, x := range ours {
+		joined = append(joined, x.(string))
+	}
+	foreign := []any{strings.Join(joined, " ")}
+	cases := map[string]map[string]any{
+		"absent":  {},
+		"ours":    {"notify": ours},
+		"foreign": {"notify": foreign},
+	}
+	for want, cfg := range cases {
+		if got := notifyState(cfg, b); got != want {
+			t.Fatalf("notifyState = %q, want %q", got, want)
+		}
+	}
+	if notifyState(map[string]any{"notify": []any{"other-tool", "notify"}}, b) != "foreign" {
+		t.Fatal("other tool's notify not foreign")
 	}
 }
