@@ -32,18 +32,18 @@ Linux x86-64, pinned release with checksum verification:
 
 ```bash
 mkdir -p /tmp/dp-install && cd /tmp/dp-install
-curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/desire-path_0.2.1_linux_amd64.tar.gz
-curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/checksums.txt
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.4.0/desire-path_0.4.0_linux_amd64.tar.gz
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.4.0/checksums.txt
 sha256sum --check --ignore-missing checksums.txt
-tar -xzf desire-path_0.2.1_linux_amd64.tar.gz dp
+tar -xzf desire-path_0.4.0_linux_amd64.tar.gz dp
 mkdir -p "$HOME/.local/bin" && install -m 755 dp "$HOME/.local/bin/dp"
 export PATH="$HOME/.local/bin:$PATH"
 dp version
 ```
 
-Expected: `dp 0.2.1 (6c5840f)`. If you see something else, check `command -v dp`.
+Expected: `dp 0.4.0 (ee19f0a)`. If you see something else, check `command -v dp`.
 
-From source (Go 1.24+): `go install github.com/scbrown/desire-path/cmd/dp@v0.2.1`,
+From source (Go 1.24+): `go install github.com/scbrown/desire-path/cmd/dp@v0.4.0`,
 then add `$(go env GOPATH)/bin` to PATH and run `dp version`.
 See [installation](https://scbrown.github.io/desire-path/getting-started.html) for macOS, Windows, and source-checkout builds.
 

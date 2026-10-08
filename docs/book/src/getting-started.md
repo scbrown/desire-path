@@ -8,18 +8,18 @@ For Linux x86-64:
 
 ```bash
 mkdir -p /tmp/dp-install && cd /tmp/dp-install
-curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/desire-path_0.2.1_linux_amd64.tar.gz
-curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.2.1/checksums.txt
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.4.0/desire-path_0.4.0_linux_amd64.tar.gz
+curl -fLO https://github.com/scbrown/desire-path/releases/download/v0.4.0/checksums.txt
 sha256sum --check --ignore-missing checksums.txt
-tar -xzf desire-path_0.2.1_linux_amd64.tar.gz dp
+tar -xzf desire-path_0.4.0_linux_amd64.tar.gz dp
 mkdir -p "$HOME/.local/bin" && install -m 755 dp "$HOME/.local/bin/dp"
 export PATH="$HOME/.local/bin:$PATH"
 dp version
 ```
 
-Expected: `dp 0.2.1 (6c5840f)`. If you see something else, check `command -v dp`.
+Expected: `dp 0.4.0 (ee19f0a)`. If you see something else, check `command -v dp`.
 
-[Release v0.2.1](https://github.com/scbrown/desire-path/releases/tag/v0.2.1)
+[Release v0.4.0](https://github.com/scbrown/desire-path/releases/tag/v0.4.0)
 also contains Linux arm64, macOS amd64/arm64, and Windows amd64/arm64 archives.
 Download your matching archive and `checksums.txt`, verify its SHA-256 before
 extracting, then place `dp` (or `dp.exe`) on PATH. On macOS use `shasum -a 256`
@@ -31,7 +31,7 @@ The commands above specifically exercise the Linux amd64 archive.
 With Go 1.24 or later:
 
 ```bash
-go install github.com/scbrown/desire-path/cmd/dp@v0.2.1
+go install github.com/scbrown/desire-path/cmd/dp@v0.4.0
 export PATH="$(go env GOPATH)/bin:$PATH"
 dp version
 ```
@@ -76,7 +76,7 @@ install interception. See [pave](commands/pave.md) for that separate setup.
 ## Troubleshooting
 
 - **Wrong version:** check `command -v dp`. A different binary may appear earlier on PATH.
-- **Metrics diagnostic:** without `DESIRE_PATH_METRICS_PUSHGATEWAY`, v0.2.1 reports
+- **Metrics diagnostic:** without `DESIRE_PATH_METRICS_PUSHGATEWAY`, v0.4.0 reports
   that no metrics were pushed on stderr. Local ingestion still works; check the query result.
 - **No failures yet:** `dp paths` needs failed invocations. Use the synthetic fixture above
   to distinguish an empty history from a broken setup.
