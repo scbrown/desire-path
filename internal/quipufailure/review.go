@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -36,7 +35,6 @@ const maxResponseBytes = 1 << 20
 const maxPatternBytes = 8192
 
 var toolRE = regexp.MustCompile(`(?:^|__)quipu_([a-z_]+)$`)
-var urlRE = regexp.MustCompile(`https?://[^\s'"<>]+`)
 var opRE = regexp.MustCompile(`^[a-z][a-z_]{0,40}$`)
 var agentRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,47}$`)
 var queryToken = regexp.MustCompile(`(?s)<[^>]*>|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\?[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_:-]*|[0-9]+|[^\s]`)
@@ -50,6 +48,9 @@ func Prepare(f *source.Fields, hosts []string, agent string) (*source.Fields, bo
 		return f, false
 	}
 	outcome, class := classify(f)
+	if shellTool(f.ToolName) {
+		outcome, class = classifyHTTP(f)
+	}
 	if options, ok := input.(map[string]any); ok && options["expect_nonempty"] == true && outcome == "success" {
 		empty, nonempty := false, false
 		for _, key := range []string{"tool_response", "tool_output", "result", "aggregated_output"} {
@@ -105,20 +106,25 @@ func Prepare(f *source.Fields, hosts []string, agent string) (*source.Fields, bo
 func digest(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
 
 func operation(f *source.Fields, hosts []string) (string, any, bool) {
-	var input any
-	if len(f.ToolInput) <= maxInputBytes {
-		_ = json.Unmarshal(f.ToolInput, &input)
-	}
 	name := f.ToolName
 	if name == "mcp_tool_call" {
 		var tool string
 		_ = json.Unmarshal(f.Extra["tool"], &tool)
-		name = "quipu_missing"
-		if strings.HasPrefix(tool, "quipu_") {
+		if toolRE.MatchString(tool) {
 			name = tool
 		} else {
 			return "", nil, false
 		}
+	}
+	// Unrelated hooks never pay to decode their potentially large inputs.
+	if !toolRE.MatchString(name) && !shellTool(name) {
+		return "", nil, false
+	}
+	var input any
+	if len(f.ToolInput) <= maxInputBytes {
+		_ = json.Unmarshal(f.ToolInput, &input)
+	}
+	if f.ToolName == "mcp_tool_call" {
 		if raw, ok := f.Extra["arguments"]; ok && len(raw) <= maxInputBytes {
 			_ = json.Unmarshal(raw, &input)
 		}
@@ -134,7 +140,7 @@ func operation(f *source.Fields, hosts []string) (string, any, bool) {
 		}
 		return op, input, true
 	}
-	if f.ToolName != "Bash" && f.ToolName != "command_execution" && f.ToolName != "exec_command" {
+	if !shellTool(f.ToolName) {
 		return "", nil, false
 	}
 	command, _ := input.(string)
@@ -144,31 +150,7 @@ func operation(f *source.Fields, hosts []string) (string, any, bool) {
 			command, _ = m["cmd"].(string)
 		}
 	}
-	for _, raw := range urlRE.FindAllString(command, -1) {
-		u, err := url.Parse(raw)
-		if err != nil {
-			continue
-		}
-		for _, host := range hosts {
-			if strings.EqualFold(u.Hostname(), strings.TrimSpace(host)) && host != "" {
-				op := strings.Trim(u.Path, "/")
-				if !opRE.MatchString(op) {
-					op = "http"
-				}
-				// Shell is opaque: preserve no headers, literals, shell substitutions or paths.
-				// A JSON body can be supplied separately by an observer as review_input.
-				var body any
-				if raw, ok := f.Extra["review_input"]; ok && len(raw) <= maxInputBytes {
-					_ = json.Unmarshal(raw, &body)
-				}
-				if body == nil {
-					body = map[string]any{"shell": nil}
-				}
-				return op, body, true
-			}
-		}
-	}
-	return "", nil, false
+	return curlOperation(command, f.Extra["review_input"], hosts)
 }
 
 func normalize(v any, key string, depth int) string {
@@ -189,7 +171,7 @@ func normalize(v any, key string, depth int) string {
 		for _, k := range keys {
 			// Unknown keys can themselves be credentials or user prose.
 			switch k {
-			case "query", "input", "endpoint", "name", "params", "nodes", "edges", "entity", "predicate", "value", "turtle", "scope_kind", "scope_value", "shell", "limit", "task", "expect_nonempty":
+			case "query", "input", "method", "endpoint", "name", "params", "nodes", "edges", "entity", "predicate", "value", "turtle", "scope_kind", "scope_value", "shell", "limit", "task", "expect_nonempty":
 				parts = append(parts, k+":"+normalize(x[k], k, depth+1))
 			default:
 				parts = append(parts, "<field>:<redacted>")
@@ -213,6 +195,9 @@ func normalize(v any, key string, depth int) string {
 		}
 		return "[" + strings.Join(parts, ",") + "]"
 	case string:
+		if key == "method" && knownMethod(x) {
+			return x
+		}
 		if key != "query" {
 			return "<string>"
 		}
@@ -298,6 +283,24 @@ func response(v any, depth int) (string, string) {
 		}
 		return "unknown", ""
 	}
+	if blocks, ok := v.([]any); ok {
+		observed := false
+		for _, block := range blocks {
+			b, ok := block.(map[string]any)
+			if !ok || b["type"] != "text" {
+				continue
+			}
+			s, c := response(b["text"], depth+1)
+			if s == "failure" {
+				return s, c
+			}
+			observed = observed || s == "success"
+		}
+		if observed {
+			return "success", ""
+		}
+		return "unknown", ""
+	}
 	m, ok := v.(map[string]any)
 	if !ok {
 		return "unknown", ""
@@ -305,11 +308,14 @@ func response(v any, depth int) (string, string) {
 	if c, ok := m["conforms"].(bool); ok && !c {
 		return "failure", "shape-refusal"
 	}
-	if e, ok := m["error"]; ok && e != nil && e != "" {
+	if e, ok := m["error"]; ok && meaningfulError(e) {
 		return "failure", errorClass(text(e), "tool-error")
 	}
 	for _, key := range []string{"status_code", "http_status"} {
 		if n, ok := m[key].(float64); ok && n >= 400 && n < 600 {
+			if n == 408 {
+				return "failure", "timeout"
+			}
 			return "failure", strconv.Itoa(int(n)/100) + "xx"
 		}
 	}
@@ -364,10 +370,25 @@ func response(v any, depth int) (string, string) {
 	return "unknown", ""
 }
 func text(v any) string { b, _ := json.Marshal(v); return string(b) }
+func meaningfulError(v any) bool {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x) != ""
+	case map[string]any:
+		return len(x) != 0
+	case []any:
+		return len(x) != 0
+	case bool:
+		return x
+	case float64:
+		return x != 0
+	}
+	return false
+}
 func errorClass(s, fallback string) string {
 	s = strings.ToLower(s)
 	switch {
-	case strings.Contains(s, "timeout") || strings.Contains(s, "timed out") || strings.Contains(s, "deadline"):
+	case strings.Contains(s, "timeout") || strings.Contains(s, "timed out") || strings.Contains(s, "deadline") || (strings.Contains(s, "exceeded") && strings.Contains(s, "budget")):
 		return "timeout"
 	case strings.Contains(s, "parse") || strings.Contains(s, "prefix not found") || strings.Contains(s, "syntax"):
 		return "parse"
@@ -388,6 +409,15 @@ func cardinalityEvidence(v any, depth int) (empty, nonempty bool) {
 		var decoded any
 		if len(text) <= 1<<20 && json.Unmarshal([]byte(text), &decoded) == nil {
 			return cardinalityEvidence(decoded, depth+1)
+		}
+		return
+	}
+	if blocks, ok := v.([]any); ok {
+		for _, block := range blocks {
+			if b, ok := block.(map[string]any); ok && b["type"] == "text" {
+				e, n := cardinalityEvidence(b["text"], depth+1)
+				empty, nonempty = empty || e, nonempty || n
+			}
 		}
 		return
 	}

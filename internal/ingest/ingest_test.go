@@ -825,7 +825,7 @@ func TestExtraString(t *testing.T) {
 	}
 }
 
-func TestQuipuReviewSanitizedBeforeBothWrites(t *testing.T) {
+func TestQuipuReviewAlongsideUnchangedOrdinaryRecord(t *testing.T) {
 	t.Setenv("DP_QUIPU_REVIEW", "1")
 	t.Setenv("DP_AGENT", "reviewer")
 	f := &source.Fields{ToolName: "mcp__homelab__quipu_query", InstanceID: "secret-session-marker", CWD: "secret-workdir-marker", ToolInput: json.RawMessage(`{"query":"SELECT ?secretVar WHERE { <https://secret.example/> ?p \"secret-literal-marker\" }"}`), Extra: map[string]json.RawMessage{
@@ -837,10 +837,37 @@ func TestQuipuReviewSanitizedBeforeBothWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !inv.IsError || len(s.recorded) != 1 || len(s.desires) != 1 {
-		t.Fatalf("lost failure: inv=%+v writes=%d/%d", inv, len(s.recorded), len(s.desires))
+	if inv.IsError || inv.ToolName != f.ToolName || inv.InstanceID != f.InstanceID || inv.CWD != f.CWD || len(s.recorded) != 2 || len(s.desires) != 1 {
+		t.Fatalf("ordinary behavior changed or companion missing: writes=%d/%d", len(s.recorded), len(s.desires))
 	}
-	encoded, err := json.Marshal([]any{s.recorded, s.desires})
+	// Legacy storage stays byte-for-byte the same as capture disabled, apart
+	// from generated identity/time. Privacy assertions apply to review rows.
+	t.Setenv("DP_QUIPU_REVIEW", "")
+	ordinary, err := IngestFields(context.Background(), &fakeStore{}, f, "claude-code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary.ID, ordinary.Timestamp = inv.ID, inv.Timestamp
+	before, _ := json.Marshal(ordinary)
+	after, _ := json.Marshal(inv)
+	if string(before) != string(after) {
+		t.Fatal("capture rewrote the ordinary invocation")
+	}
+	if s.recorded[1].ToolName != "quipu-review:quipu_query" {
+		t.Fatal("review must use a separate tool namespace for legacy recovery")
+	}
+	if s.recorded[1].Source != "quipu-review" || !s.recorded[1].IsError {
+		t.Fatal("review identity/failure missing")
+	}
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal(s.recorded[1].Metadata, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	var parent string
+	if err := json.Unmarshal(metadata["review_of"], &parent); err != nil || parent != inv.ID {
+		t.Fatal("review lost its ordinary invocation link")
+	}
+	encoded, err := json.Marshal([]any{s.recorded[1], s.desires})
 	if err != nil {
 		t.Fatal(err)
 	}

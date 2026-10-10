@@ -46,9 +46,10 @@ Bridges source extraction and storage. The `Ingest` function looks up a register
 
 #### quipufailure
 
-With `DP_QUIPU_REVIEW=1`, ingestion normalizes recognized Quipu completions
-before any persistence. `DP_AGENT` is declared attribution, not authentication;
-`DP_QUIPU_HTTP_HOSTS` or `QUIPU_SERVER` configures exact HTTP hosts. Records retain
+With `DP_QUIPU_REVIEW=1`, ingestion appends sanitized `quipu-review` companion
+records after recording ordinary invocations unchanged. `review_of` links each
+companion to the ordinary invocation. `DP_AGENT` is declared attribution, not authentication;
+`DP_QUIPU_HTTP_HOSTS` or `QUIPU_SERVER` configures exact HTTP hosts. Review companions retain
 structural input patterns and categorical errors while dropping raw prose and
 hashing sessions. Unknown response evidence remains unknown. This path does not
 use legacy cross-session recovery matching. See
