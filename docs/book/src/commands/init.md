@@ -8,7 +8,7 @@ dp init --source claude-code
 
 The Claude Code installer merges `~/.claude/settings.json` and installs ingestion
 for successful and failed tool calls, plus search-guidance and correction hooks.
-See [Using agents](../integrations/README.md) for the complete hook list and
+See [Using agents](../integrations/index.md) for the complete hook list and
 [capture-only configuration](../integrations/claude-code.md) for the minimal alternative.
 
 ## Flags
@@ -23,4 +23,4 @@ See [Using agents](../integrations/README.md) for the complete hook list and
 | `--skip-signpost-url-check` | Explicitly install before the backend is available |
 
 Use `dp init --help` to inspect the installed version's flags. `--track-all` and
-`--claude-code` are not flags in v0.2.1. Ingestion already captures both outcomes.
+`--claude-code` are not flags in v0.4.0. Ingestion already captures both outcomes.

@@ -11,7 +11,7 @@ dp init --source claude-code
 dp sources
 ```
 
-The installer merges `~/.claude/settings.json`. In v0.2.1 it adds:
+The installer merges `~/.claude/settings.json`. In v0.4.0 it adds:
 
 | event | command | purpose |
 |---|---|---|
@@ -29,7 +29,7 @@ active interception as a separate opt-in.
 
 ## Other source plugins
 
-`dp sources` in v0.2.1 lists `codex`, `cursor`, and `kiro` as well as `claude-code`.
+`dp sources` in v0.4.0 lists `codex`, `cursor`, and `kiro` as well as `claude-code`.
 Use the installed binary's `dp init --help` and inspect generated configuration
 for the chosen source. A parser or installer being present does not establish
 that every event is emitted by every agent version. The

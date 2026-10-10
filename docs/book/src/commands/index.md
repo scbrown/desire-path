@@ -62,10 +62,10 @@ All commands support these global flags:
 
 ## Additional commands
 
-The v0.2.1 CLI also lists `sources`, `version`, `turns`, `recoveries`, `struggling`,
+The v0.4.0 CLI also lists `sources`, `version`, `turns`, `recoveries`, `struggling`,
 `env-needs`, `map`, `mappings`, `suggest`, `serve`, `eval`, and `signpost`.
 `legend-refresh` builds the gazetteer for the read-time
 [entity legend](./legend.md), a second stage of `signpost`.
 Use `dp <command> --help` for their version-specific options.
 The [docs map](../docs-map.md) routes their design notes and the
-[evaluation chapters](../evaluations/README.md) describe signposting experiments.
+[evaluation chapters](../evaluations/index.md) describe signposting experiments.

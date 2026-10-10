@@ -13,7 +13,7 @@
 
 # Concepts
 
-- [Overview](./concepts/README.md)
+- [Overview](./concepts/index.md)
 - [Desires](./concepts/desires.md)
 - [Paths](./concepts/paths-concept.md)
 - [Aliases](./concepts/aliases.md)
@@ -23,7 +23,7 @@
 
 # Command Reference
 
-- [Overview](./commands/README.md)
+- [Overview](./commands/index.md)
 - [dp record](./commands/record.md)
 - [dp ingest](./commands/ingest.md)
 - [dp init](./commands/init.md)
@@ -42,7 +42,7 @@
 
 # Integrations
 
-- [Overview](./integrations/README.md)
+- [Overview](./integrations/index.md)
 - [Claude Code](./integrations/claude-code.md)
 - [Writing a Source Plugin](./integrations/writing-plugins.md)
 
@@ -50,7 +50,7 @@
 
 # Evaluations
 
-- [Overview](./evaluations/README.md)
+- [Overview](./evaluations/index.md)
 - [2026-03-05 Baseline](./evaluations/2026-03-05-baseline.md)
 - [2026-08-27 Signposting pilot](./evaluations/2026-08-27-signposting-pilot.md)
 - [2026-08-27 Local warm signposting](./evaluations/2026-08-27-local-warm-pilot.md)
