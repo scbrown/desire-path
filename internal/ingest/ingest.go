@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/scbrown/desire-path/internal/analyze"
 	"github.com/scbrown/desire-path/internal/config"
 	"github.com/scbrown/desire-path/internal/model"
+	"github.com/scbrown/desire-path/internal/quipufailure"
 	"github.com/scbrown/desire-path/internal/source"
 	"github.com/scbrown/desire-path/internal/store"
 	"github.com/scbrown/desire-path/internal/transcript"
@@ -49,6 +52,16 @@ func Ingest(ctx context.Context, s store.Store, raw []byte, sourceName string) (
 // transcript is parsed to enrich the invocation with turn context (turn_id,
 // turn_sequence, turn_length).
 func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sourceName string) (model.Invocation, error) {
+	var reviewFields *source.Fields
+	if os.Getenv("DP_QUIPU_REVIEW") == "1" {
+		hosts := strings.Split(os.Getenv("DP_QUIPU_HTTP_HOSTS"), ",")
+		if server, err := url.Parse(os.Getenv("QUIPU_SERVER")); err == nil && server.Hostname() != "" {
+			hosts = append(hosts, server.Hostname())
+		}
+		if sanitized, recognized := quipufailure.Prepare(fields, hosts, os.Getenv("DP_AGENT")); recognized {
+			reviewFields = sanitized
+		}
+	}
 	inv, err := toInvocation(fields, sourceName)
 	if err != nil {
 		return model.Invocation{}, err
@@ -78,6 +91,28 @@ func IngestFields(ctx context.Context, s store.Store, fields *source.Fields, sou
 	if inv.TurnLength >= config.DefaultTurnLengthThreshold {
 		// Best-effort: surfacing failures don't block ingest.
 		analyze.SurfaceTurnPatternDesires(ctx, s, config.DefaultTurnLengthThreshold)
+	}
+
+	// Opt-in review is additive. Never replace the established source tool name,
+	// session, CWD, turn enrichment, or legacy recovery/desire behavior. Only the
+	// companion record is normalized/redacted and excluded from legacy matching.
+	if reviewFields != nil {
+		reviewFields.Extra["review_of"], _ = json.Marshal(inv.ID)
+		// Legacy recovery lookup is tool-only, so companions need a distinct namespace.
+		reviewFields.ToolName = "quipu-review:" + reviewFields.ToolName
+		review, err := toInvocation(reviewFields, "quipu-review")
+		if err != nil {
+			return inv, fmt.Errorf("preparing Quipu review (ordinary invocation recorded): %w", err)
+		}
+		if err := s.RecordInvocation(ctx, review); err != nil {
+			return inv, fmt.Errorf("appending Quipu review (ordinary invocation recorded): %w", err)
+		}
+		if review.IsError {
+			d := toDesire(reviewFields, "quipu-review", review.Timestamp, review.Metadata)
+			if err := s.RecordDesire(ctx, d); err != nil {
+				return inv, fmt.Errorf("appending Quipu review desire (invocations recorded): %w", err)
+			}
+		}
 	}
 
 	return inv, nil

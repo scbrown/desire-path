@@ -1,0 +1,24 @@
+{
+  "session_id": "redacted",
+  "transcript_path": "redacted",
+  "cwd": "redacted",
+  "prompt_id": "redacted",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__example__quipu_query",
+  "tool_input": {
+    "query": "SELECT (1 AS ?control) WHERE {}"
+  },
+  "tool_response": [
+    {
+      "type": "text",
+      "text": "{\"count\":1,\"labels\":null,\"rows\":[{\"control\":1}],\"truncated\":false,\"variables\":[\"control\"]}"
+    }
+  ],
+  "tool_use_id": "redacted",
+  "duration_ms": 23,
+  "mcp_server": "example"
+}

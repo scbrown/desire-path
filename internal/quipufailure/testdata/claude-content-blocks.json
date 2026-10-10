@@ -1,0 +1,15 @@
+{
+  "session_id": "redacted-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__example__quipu_query",
+  "cwd": "/workspace/fixture",
+  "tool_input": {
+    "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1"
+  },
+  "tool_response": [
+    {
+      "type": "text",
+      "text": "{\"conforms\": false, \"field-1\": \"<redacted>\", \"field-2\": [{\"field-0\": \"<redacted>\", \"field-1\": \"<redacted>\", \"message\": \"observed tool error\", \"field-3\": \"<redacted>\", \"field-4\": \"<redacted>\", \"field-5\": \"<redacted>\", \"field-6\": null}], \"violations\": 1, \"field-4\": 0}"
+    }
+  ]
+}

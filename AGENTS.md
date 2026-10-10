@@ -17,6 +17,7 @@ internal/        Private packages - not importable by external code.
   store/         Storage interface + SQLite implementation.
   source/        Source plugin interface, registry, and built-in plugins.
   ingest/        Raw payload → Invocation conversion and persistence.
+  quipufailure/  Opt-in semantic Quipu failure normalization and redaction.
   record/        Stdin JSON parsing and desire recording.
   analyze/       Similarity engine for tool name suggestions.
   signpost/      PostToolUse gating, intent discovery, stack pointer/payload
@@ -42,6 +43,17 @@ Defines the `Source` plugin interface for extracting structured fields from raw 
 #### ingest
 
 Bridges source extraction and storage. The `Ingest` function looks up a registered source plugin by name, calls `Extract` on raw bytes, converts the resulting `Fields` into a `model.Invocation` (auto-generating UUID and timestamp), and persists it via `store.RecordInvocation`. This is the single entry point for recording tool call data from any source.
+
+#### quipufailure
+
+With `DP_QUIPU_REVIEW=1`, ingestion appends sanitized `quipu-review` companion
+records after recording ordinary invocations unchanged. `review_of` links each
+companion to the ordinary invocation. `DP_AGENT` is declared attribution, not authentication;
+`DP_QUIPU_HTTP_HOSTS` or `QUIPU_SERVER` configures exact HTTP hosts. Review companions retain
+structural input patterns and categorical errors while dropping raw prose and
+hashing sessions. Unknown response evidence remains unknown. This path does not
+use legacy cross-session recovery matching. See
+[the review plan](docs/plans/008-quipu-failure-review.md).
 
 #### signpost
 
